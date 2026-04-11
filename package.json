@@ -1,7 +1,7 @@
 {
-  "name": "@tjcccc/priest",
+  "name": "@priest/core",
   "version": "0.1.0",
-  "description": "Node.js SDK for the priest AI orchestration protocol",
+  "description": "TypeScript/Node.js SDK for the priest AI orchestration protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],

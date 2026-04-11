@@ -2,9 +2,9 @@
 
 ## 2026-04-11 — Initial implementation
 
-First implementation of `priest-node`, the Node.js SDK for the priest protocol.
+First implementation of `priest-typescript`, the TypeScript/Node.js SDK for the priest protocol.
 
-npm package: `@tjcccc/priest`
+npm package: `@priest/core`
 
 Implements the priest protocol spec v1.0.0. Reference implementation: Python `priest-core`.
 
