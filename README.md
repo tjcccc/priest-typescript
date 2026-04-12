@@ -1,4 +1,4 @@
-# @priest/core
+# @priest-ai/core
 
 TypeScript SDK for the [priest](https://github.com/tjcccc/priest) AI orchestration protocol.
 
@@ -8,7 +8,7 @@ Node.js 18+ · TypeScript 5+ · One dependency (`better-sqlite3` for SQLite sess
 
 ## Overview
 
-`@priest/core` is a TypeScript package that implements the priest protocol spec v1.0.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v1.0.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
 The core API is two methods on `PriestEngine`:
 
@@ -22,15 +22,15 @@ The core API is two methods on `PriestEngine`:
 ## Installation
 
 ```bash
-npm install @priest/core
+npm install @priest-ai/core
 # or
-pnpm add @priest/core
+pnpm add @priest-ai/core
 ```
 
 Then import:
 
 ```ts
-import { PriestEngine, OllamaProvider, FilesystemProfileLoader } from '@priest/core';
+import { PriestEngine, OllamaProvider, FilesystemProfileLoader } from '@priest-ai/core';
 ```
 
 ---
@@ -40,7 +40,7 @@ import { PriestEngine, OllamaProvider, FilesystemProfileLoader } from '@priest/c
 ### Single run with Ollama
 
 ```ts
-import { PriestEngine, OllamaProvider, FilesystemProfileLoader } from '@priest/core';
+import { PriestEngine, OllamaProvider, FilesystemProfileLoader } from '@priest-ai/core';
 
 const engine = new PriestEngine(
   new FilesystemProfileLoader('./profiles'),
@@ -72,7 +72,7 @@ for await (const chunk of engine.stream({
 ### Anthropic or OpenAI-compatible providers
 
 ```ts
-import { AnthropicProvider, OpenAICompatProvider } from '@priest/core';
+import { AnthropicProvider, OpenAICompatProvider } from '@priest-ai/core';
 
 const engine = new PriestEngine(
   new FilesystemProfileLoader('./profiles'),
@@ -96,7 +96,7 @@ const response = await engine.run({
 Pass a `session` field to persist conversation history across calls.
 
 ```ts
-import { SQLiteSessionStore } from '@priest/core';
+import { SQLiteSessionStore } from '@priest-ai/core';
 
 const store = new SQLiteSessionStore('./sessions.db');
 store.open();
@@ -177,7 +177,7 @@ const response = await engine.run({
 
 `providerFormat` activates the provider's native structured-output mode (e.g. Ollama `format` field, OpenAI `response_format`). `promptFormat` injects a natural-language instruction into the system prompt — works with any provider.
 
-`response.text` is always the raw string. `@priest/core` never parses the output.
+`response.text` is always the raw string. `@priest-ai/core` never parses the output.
 
 ---
 
@@ -191,7 +191,7 @@ Two errors are always thrown and never captured into `response.error`:
 All other provider errors (network failures, rate limits, timeouts) are caught and placed into `response.error`. Check `response.ok` before reading `response.text`.
 
 ```ts
-import { PriestError } from '@priest/core';
+import { PriestError } from '@priest-ai/core';
 
 try {
   const response = await engine.run(request);
@@ -227,7 +227,7 @@ Provider keys are arbitrary strings — the key you register in the `adapters` m
 Implement `ProviderAdapter` to add your own backend:
 
 ```ts
-import { ProviderAdapter, Message, AdapterResult, PriestConfig, OutputSpec } from '@priest/core';
+import { ProviderAdapter, Message, AdapterResult, PriestConfig, OutputSpec } from '@priest-ai/core';
 
 class MyProvider implements ProviderAdapter {
   async complete(messages: Message[], config: PriestConfig): Promise<AdapterResult> {
@@ -248,7 +248,7 @@ const engine = new PriestEngine(loader, store, { my: new MyProvider() });
 
 ## Spec
 
-`@priest/core` targets priest protocol spec **v1.0.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+`@priest-ai/core` targets priest protocol spec **v1.0.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
 
 ```ts
 PriestEngine.specVersion  // '1.0.0'

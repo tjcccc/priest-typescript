@@ -4,7 +4,7 @@
 
 First implementation of `priest-typescript`, the TypeScript/Node.js SDK for the priest protocol.
 
-npm package: `@priest/core`
+npm package: `@priest-ai/core`
 
 Implements the priest protocol spec v1.0.0. Reference implementation: Python `priest-core`.
 

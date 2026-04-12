@@ -1,5 +1,5 @@
 {
-  "name": "@priest/core",
+  "name": "@priest-ai/core",
   "version": "1.0.0",
   "description": "TypeScript/Node.js SDK for the priest AI orchestration protocol",
   "main": "dist/index.js",
