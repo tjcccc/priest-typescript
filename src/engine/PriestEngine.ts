@@ -16,7 +16,7 @@ import { buildMessages } from './ContextBuilder';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '1.0.0';
+  static readonly specVersion = '2.0.0';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
@@ -44,9 +44,11 @@ export class PriestEngine {
       profile: loadedProfile,
       session: session ?? undefined,
       prompt: request.prompt,
-      systemContext: request.systemContext,
-      extraContext: request.extraContext,
+      context: request.context,
+      memory: request.memory,
+      userContext: request.userContext,
       outputSpec: request.output,
+      maxSystemChars: request.config.maxSystemChars,
     });
 
     let text: string | undefined;
@@ -125,9 +127,11 @@ export class PriestEngine {
       profile: loadedProfile,
       session: session ?? undefined,
       prompt: request.prompt,
-      systemContext: request.systemContext,
-      extraContext: request.extraContext,
+      context: request.context,
+      memory: request.memory,
+      userContext: request.userContext,
       outputSpec: request.output,
+      maxSystemChars: request.config.maxSystemChars,
     });
 
     const parts: string[] = [];

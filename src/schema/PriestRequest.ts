@@ -15,11 +15,13 @@ export interface PriestRequest {
   session?: SessionRef;
   /**
    * App-layer strings injected at the top of the system prompt.
-   * Use for runtime policy: current date, environment name, guardrails, etc.
+   * Raw, passed through untouched. Use for runtime policy: current date, environment name, guardrails.
    */
-  systemContext?: string[];
-  /** Additional strings appended to the user turn after the prompt. */
-  extraContext?: string[];
+  context?: string[];
+  /** Dynamic memory entries. Deduped against profile memories and each other. Subject to tail-trim. */
+  memory?: string[];
+  /** Strings appended to the user turn after the prompt, joined with \n\n. */
+  userContext?: string[];
   /** Output format hints. */
   output?: OutputSpec;
   /** Arbitrary caller metadata. Echoed unchanged into PriestResponse.metadata. */

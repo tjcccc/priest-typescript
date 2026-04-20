@@ -32,23 +32,23 @@ describe('ContextBuilder', () => {
     expect(system.indexOf('Be helpful.')).toBeLessThan(system.indexOf('You are a test assistant.'));
   });
 
-  it('injects systemContext before rules', () => {
+  it('injects context before rules', () => {
     const msgs = buildMessages({
       profile: baseProfile,
       session: undefined,
       prompt: 'Hi',
-      systemContext: ['Today is Monday.'],
+      context: ['Today is Monday.'],
     });
     const system = msgs[0].content;
     expect(system.indexOf('Today is Monday.')).toBeLessThan(system.indexOf('Be helpful.'));
   });
 
-  it('appends extraContext to the user message with double newline separator', () => {
+  it('appends userContext to the user message with double newline separator', () => {
     const msgs = buildMessages({
       profile: baseProfile,
       session: undefined,
       prompt: 'Summarize this',
-      extraContext: ['Context: some document'],
+      userContext: ['Context: some document'],
     });
     expect(msgs[msgs.length - 1].content).toBe('Summarize this\n\nContext: some document');
   });
@@ -65,7 +65,7 @@ describe('ContextBuilder', () => {
     }
   });
 
-  it('renders memories block with correct header and single-newline separator', () => {
+  it('renders profile memories block with correct header and single-newline separator', () => {
     const profile: Profile = { ...baseProfile, memories: ['mem1', 'mem2'] };
     const msgs = buildMessages({ profile, session: undefined, prompt: 'Hi' });
     expect(msgs[0].content).toContain('## Loaded Memories\n\nmem1\nmem2');
@@ -80,5 +80,104 @@ describe('ContextBuilder', () => {
   it('default profile identity and rules match spec', () => {
     expect(DEFAULT_PROFILE.identity).toBe('You are a helpful, thoughtful assistant.\n');
     expect(DEFAULT_PROFILE.rules).toBe('Be honest. Do not make things up.\nBe concise unless the user asks for depth.\n');
+  });
+
+  // v2.0.0 — dynamic memory block
+
+  it('renders dynamic memory under ## Memory header', () => {
+    const msgs = buildMessages({
+      profile: baseProfile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['User prefers dark mode.'],
+    });
+    expect(msgs[0].content).toContain('## Memory\n\nUser prefers dark mode.');
+  });
+
+  it('renders profile memories before dynamic memory', () => {
+    const profile: Profile = { ...baseProfile, memories: ['Static fact.'] };
+    const msgs = buildMessages({
+      profile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['Dynamic fact.'],
+    });
+    const system = msgs[0].content;
+    expect(system.indexOf('## Loaded Memories')).toBeLessThan(system.indexOf('## Memory'));
+  });
+
+  // v2.0.0 — deduplication
+
+  it('drops dynamic memory entry that duplicates a profile memory', () => {
+    const profile: Profile = { ...baseProfile, memories: ['Fact A.'] };
+    const msgs = buildMessages({
+      profile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['Fact A.', 'Fact B.'],
+    });
+    const system = msgs[0].content;
+    // 'Fact A.' should appear only once (in Loaded Memories)
+    const firstIdx = system.indexOf('Fact A.');
+    const secondIdx = system.indexOf('Fact A.', firstIdx + 1);
+    expect(secondIdx).toBe(-1);
+    expect(system).toContain('Fact B.');
+  });
+
+  it('drops duplicate entries within dynamic memory itself', () => {
+    const msgs = buildMessages({
+      profile: baseProfile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['Note X.', 'Note X.'],
+    });
+    const system = msgs[0].content;
+    const firstIdx = system.indexOf('Note X.');
+    const secondIdx = system.indexOf('Note X.', firstIdx + 1);
+    expect(secondIdx).toBe(-1);
+  });
+
+  it('strips whitespace when comparing for dedup', () => {
+    const profile: Profile = { ...baseProfile, memories: ['Fact A.'] };
+    const msgs = buildMessages({
+      profile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['  Fact A.  '],
+    });
+    const system = msgs[0].content;
+    // stripped ' Fact A.' should be deduped — no ## Memory block
+    expect(system).not.toContain('## Memory');
+  });
+
+  // v2.0.0 — trim
+
+  it('trims dynamic memory tail-first when maxSystemChars exceeded', () => {
+    const profile: Profile = { ...baseProfile, identity: '', rules: '' };
+    const msgs = buildMessages({
+      profile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['Short.', 'X'.repeat(500)],
+      maxSystemChars: 50,
+    });
+    const system = msgs[0].content;
+    // Long entry trimmed first, short one survives
+    expect(system).toContain('Short.');
+    expect(system).not.toContain('X'.repeat(500));
+  });
+
+  it('does not trim when maxSystemChars is not set', () => {
+    const profile: Profile = { ...baseProfile, identity: '', rules: '' };
+    const msgs = buildMessages({
+      profile,
+      session: undefined,
+      prompt: 'Hi',
+      memory: ['A.', 'B.', 'C.'],
+    });
+    const system = msgs[0].content;
+    expect(system).toContain('A.');
+    expect(system).toContain('B.');
+    expect(system).toContain('C.');
   });
 });
