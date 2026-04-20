@@ -8,7 +8,7 @@ Node.js 18+ · TypeScript 5+ · One dependency (`better-sqlite3` for SQLite sess
 
 ## Overview
 
-`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v1.0.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.0.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
 The core API is two methods on `PriestEngine`:
 
@@ -165,6 +165,36 @@ Profile format — `default.json`:
 
 ---
 
+## Memory and Context
+
+```ts
+const response = await engine.run({
+  config: { provider: 'ollama', model: 'llama3.2' },
+  prompt: 'What should I work on today?',
+
+  // Raw system context — injected first, never trimmed or deduped
+  context: ['Today is Monday. App: ProjectManager'],
+
+  // Dynamic memory — deduped against profile memories and each other
+  memory: ['User prefers bullet points.', 'Active sprint: v3.0'],
+
+  // Per-turn user context — appended to the user message
+  user_context: ['Recent tasks: [fix login bug, update README]'],
+});
+```
+
+When `max_system_chars` is set on the config, the engine trims `memory` entries tail-first, then `profile.memories` tail-first. `context`, rules, identity, custom, and format instructions are never trimmed.
+
+```ts
+const response = await engine.run({
+  config: { provider: 'ollama', model: 'llama3.2', max_system_chars: 4096 },
+  prompt: 'Summarize my notes.',
+  memory: longMemoryList,
+});
+```
+
+---
+
 ## Output Format Hints
 
 ```ts
@@ -248,10 +278,10 @@ const engine = new PriestEngine(loader, store, { my: new MyProvider() });
 
 ## Spec
 
-`@priest-ai/core` targets priest protocol spec **v1.0.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+`@priest-ai/core` targets priest protocol spec **v2.0.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
 
 ```ts
-PriestEngine.specVersion  // '1.0.0'
+PriestEngine.specVersion  // '2.0.0'
 ```
 
 ---
