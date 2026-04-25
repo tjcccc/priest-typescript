@@ -30,7 +30,9 @@ export class OllamaProvider implements ProviderAdapter {
       stream: true,
       ...(config.providerOptions ?? {}),
     };
-    if (outputSpec?.providerFormat === 'json') {
+    if (outputSpec?.jsonSchema != null) {
+      body['format'] = outputSpec.jsonSchema;
+    } else if (outputSpec?.providerFormat === 'json') {
       body['format'] = 'json';
     }
     if (config.maxOutputTokens !== undefined) {

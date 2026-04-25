@@ -25,7 +25,16 @@ export class OpenAICompatProvider implements ProviderAdapter {
       stream: false,
       ...(config.providerOptions ?? {}),
     };
-    if (outputSpec?.providerFormat === 'json') {
+    if (outputSpec?.jsonSchema != null) {
+      body['response_format'] = {
+        type: 'json_schema',
+        json_schema: {
+          name: outputSpec.jsonSchemaName ?? 'response',
+          schema: outputSpec.jsonSchema,
+          strict: outputSpec.jsonSchemaStrict ?? false,
+        },
+      };
+    } else if (outputSpec?.providerFormat === 'json') {
       body['response_format'] = { type: 'json_object' };
     }
     if (config.maxOutputTokens !== undefined) {
@@ -78,7 +87,16 @@ export class OpenAICompatProvider implements ProviderAdapter {
       stream: true,
       ...(config.providerOptions ?? {}),
     };
-    if (outputSpec?.providerFormat === 'json') {
+    if (outputSpec?.jsonSchema != null) {
+      body['response_format'] = {
+        type: 'json_schema',
+        json_schema: {
+          name: outputSpec.jsonSchemaName ?? 'response',
+          schema: outputSpec.jsonSchema,
+          strict: outputSpec.jsonSchemaStrict ?? false,
+        },
+      };
+    } else if (outputSpec?.providerFormat === 'json') {
       body['response_format'] = { type: 'json_object' };
     }
     if (config.maxOutputTokens !== undefined) {

@@ -15,4 +15,20 @@ export interface OutputSpec {
   providerFormat?: ProviderFormat;
   /** Injects a natural-language format instruction into the system prompt. */
   promptFormat?: PromptFormat;
+  /**
+   * JSON Schema for structured output.
+   * OpenAI-compat: maps to response_format={type:"json_schema",...}.
+   * Ollama (v0.5+): maps to format:<schema_dict>.
+   * Anthropic: schema description injected into system message (no native support).
+   * When set, takes precedence over providerFormat for the schema-capable path.
+   * If promptFormat is also set, both instructions will appear — prefer using one or the other.
+   */
+  jsonSchema?: Record<string, unknown>;
+  /** Schema name passed to OpenAI's json_schema.name field. Defaults to "response". */
+  jsonSchemaName?: string;
+  /**
+   * Maps to OpenAI's json_schema.strict. Requires every property in required and
+   * additionalProperties:false. Most user schemas won't satisfy this. Defaults to false.
+   */
+  jsonSchemaStrict?: boolean;
 }

@@ -130,9 +130,17 @@ export class AnthropicProvider implements ProviderAdapter {
     config: PriestConfig,
     chatMessages: Message[],
     system: string,
-    _outputSpec: OutputSpec | undefined,
+    outputSpec: OutputSpec | undefined,
     stream: boolean,
   ): Record<string, unknown> {
+    let systemText = system;
+    if (outputSpec?.jsonSchema != null) {
+      const instruction =
+        'Respond with a valid JSON object that conforms to the following JSON Schema:\n\n' +
+        `<schema>\n${JSON.stringify(outputSpec.jsonSchema, null, 2)}\n</schema>\n\n` +
+        'Return only the JSON object — no explanation, no markdown fences.';
+      systemText = systemText ? `${systemText}\n\n${instruction}` : instruction;
+    }
     const body: Record<string, unknown> = {
       model: config.model,
       max_tokens: config.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
@@ -140,7 +148,7 @@ export class AnthropicProvider implements ProviderAdapter {
       stream,
       ...(config.providerOptions ?? {}),
     };
-    if (system) body['system'] = system;
+    if (systemText) body['system'] = systemText;
     return body;
   }
 

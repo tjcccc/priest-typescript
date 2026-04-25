@@ -205,7 +205,27 @@ const response = await engine.run({
 });
 ```
 
-`providerFormat` activates the provider's native structured-output mode (e.g. Ollama `format` field, OpenAI `response_format`). `promptFormat` injects a natural-language instruction into the system prompt — works with any provider.
+`providerFormat` activates the provider's native JSON mode. `promptFormat` injects a natural-language instruction into the system prompt.
+
+For strict schema compliance, use `jsonSchema` instead:
+
+```ts
+const response = await engine.run({
+  config: { provider: 'openai', model: 'gpt-4o-mini' },
+  prompt: 'Give me a person object.',
+  output: {
+    jsonSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' }, age: { type: 'integer' } },
+      required: ['name', 'age'],
+    },
+    jsonSchemaName: 'person',   // optional, defaults to "response"
+    jsonSchemaStrict: false,    // true requires additionalProperties:false on all objects
+  },
+});
+```
+
+`jsonSchema` maps to `response_format:{type:"json_schema"}` for OpenAI-compat, `format:<schema>` for Ollama (v0.5+), and system message injection for Anthropic. It takes precedence over `providerFormat` when both are set.
 
 `response.text` is always the raw string. `@priest-ai/core` never parses the output.
 
