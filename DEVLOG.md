@@ -1,5 +1,17 @@
 # DEVLOG
 
+## 2026-04-25 — v2.2.0 — json_schema structured output
+
+Added `jsonSchema`, `jsonSchemaName`, and `jsonSchemaStrict` to `OutputSpec`.
+
+- **OpenAI-compat:** `response_format:{type:"json_schema", json_schema:{name, schema, strict}}` in both `complete` and `stream`.
+- **Ollama (v0.5+):** `format:<schema_dict>`.
+- **Anthropic:** schema description injected into system message via `buildBody`.
+- `jsonSchema` takes precedence over `providerFormat` when both are set.
+- `PriestEngine.specVersion` → `"2.2.0"`
+
+---
+
 ## 2026-04-11 — Initial implementation
 
 First implementation of `priest-typescript`, the TypeScript/Node.js SDK for the priest protocol.

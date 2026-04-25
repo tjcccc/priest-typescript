@@ -16,7 +16,7 @@ import { buildMessages } from './ContextBuilder';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '2.0.0';
+  static readonly specVersion = '2.2.0';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
