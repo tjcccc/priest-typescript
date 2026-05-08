@@ -27,6 +27,20 @@ describe('FilesystemProfileLoader', () => {
     expect(profile.identity).toBe('I am a bot.');
   });
 
+  it('loads profile memories by default', () => {
+    writeProfile(tmpDir, 'bot', { identity: 'Bot.', rules: '', memories: ['Remember me.'] });
+    const loader = new FilesystemProfileLoader(tmpDir);
+    const profile = loader.load('bot');
+    expect(profile.memories).toEqual(['Remember me.']);
+  });
+
+  it('can disable profile memory loading', () => {
+    writeProfile(tmpDir, 'bot', { identity: 'Bot.', rules: '', memories: ['Remember me.'] });
+    const loader = new FilesystemProfileLoader(tmpDir, { includeMemories: false });
+    const profile = loader.load('bot');
+    expect(profile.memories).toEqual([]);
+  });
+
   it('returns default profile when name is "default" and file missing', () => {
     const loader = new FilesystemProfileLoader(tmpDir);
     const profile = loader.load('default');

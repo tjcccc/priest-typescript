@@ -21,6 +21,7 @@ export type { PriestErrorCode } from './errors/PriestError';
 export type { Profile } from './profile/Profile';
 export type { ProfileLoader } from './profile/ProfileLoader';
 export { FilesystemProfileLoader } from './profile/FilesystemProfileLoader';
+export type { FilesystemProfileLoaderOptions } from './profile/FilesystemProfileLoader';
 export { DEFAULT_PROFILE } from './profile/DefaultProfile';
 
 // Session

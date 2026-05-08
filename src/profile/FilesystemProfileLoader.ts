@@ -9,6 +9,14 @@ interface CacheEntry {
   profile: Profile;
 }
 
+export interface FilesystemProfileLoaderOptions {
+  /**
+   * Load memories from the profile file. Set false when the host app owns
+   * memory selection and passes selected memory through PriestRequest.memory.
+   */
+  includeMemories?: boolean;
+}
+
 /**
  * Loads profiles from JSON files in a directory.
  *
@@ -18,8 +26,11 @@ interface CacheEntry {
  */
 export class FilesystemProfileLoader implements ProfileLoader {
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly includeMemories: boolean;
 
-  constructor(private readonly baseDir: string) {}
+  constructor(private readonly baseDir: string, options: FilesystemProfileLoaderOptions = {}) {
+    this.includeMemories = options.includeMemories ?? true;
+  }
 
   load(name: string): Profile {
     const filePath = path.join(this.baseDir, `${name}.json`);
@@ -36,7 +47,7 @@ export class FilesystemProfileLoader implements ProfileLoader {
         identity: data.identity ?? '',
         rules: data.rules ?? '',
         custom: data.custom,
-        memories: data.memories ?? [],
+        memories: this.includeMemories ? data.memories ?? [] : [],
       };
       this.cache.set(name, { mtime, profile });
       return profile;

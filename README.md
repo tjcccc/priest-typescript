@@ -8,7 +8,7 @@ Node.js 18+ · TypeScript 5+ · One dependency (`better-sqlite3` for SQLite sess
 
 ## Overview
 
-`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.2.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.3.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
 The core API is two methods on `PriestEngine`:
 
@@ -152,6 +152,7 @@ const loader = new FilesystemProfileLoader('./profiles');
 ```
 
 Falls back to the built-in default profile when the named file is not found.
+Use `new FilesystemProfileLoader('./profiles', { includeMemories: false })` when the host app owns memory selection and passes selected memory through `PriestRequest.memory`.
 
 Profile format — `default.json`:
 
@@ -298,10 +299,10 @@ const engine = new PriestEngine(loader, store, { my: new MyProvider() });
 
 ## Spec
 
-`@priest-ai/core` targets priest protocol spec **v2.2.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+`@priest-ai/core` targets priest protocol spec **v2.3.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
 
 ```ts
-PriestEngine.specVersion  // '2.2.0'
+PriestEngine.specVersion  // '2.3.0'
 ```
 
 ---
