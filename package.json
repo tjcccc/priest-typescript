@@ -1,6 +1,6 @@
 {
   "name": "@priest-ai/core",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "TypeScript/Node.js SDK for the priest AI orchestration protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -4,6 +4,9 @@ export type { PriestConfig } from './schema/PriestConfig';
 export type { OutputSpec, ProviderFormat, PromptFormat } from './schema/OutputSpec';
 export type { SessionRef } from './schema/SessionRef';
 export type { PriestRequest } from './schema/PriestRequest';
+export type { ToolDefinition, ToolChoice, ToolCall, ToolExchangeTurn } from './schema/ToolTypes';
+export type { ImageInput } from './schema/ImageInput';
+export { validateImageInput, DEFAULT_IMAGE_MEDIA_TYPE } from './schema/ImageInput';
 export type {
   PriestResponse,
   ExecutionInfo,
@@ -32,12 +35,27 @@ export { InMemorySessionStore } from './session/InMemorySessionStore';
 export { SQLiteSessionStore } from './session/SQLiteSessionStore';
 
 // Providers
-export type { ProviderAdapter, Message } from './providers/ProviderAdapter';
+export type {
+  ProviderAdapter,
+  Message,
+  ContentBlock,
+  AdapterCallOptions,
+  AdapterStreamEvent,
+} from './providers/ProviderAdapter';
 export type { AdapterResult } from './providers/AdapterResult';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAICompatProvider } from './providers/OpenAICompatProvider';
+export type { OpenAICompatProviderOptions } from './providers/OpenAICompatProvider';
 export { AnthropicProvider } from './providers/AnthropicProvider';
 
 // Engine
 export { buildMessages } from './engine/ContextBuilder';
 export { PriestEngine } from './engine/PriestEngine';
+export type { PriestStreamEvent, RunOptions } from './engine/StreamEvents';
+export { runWithTools } from './engine/ToolLoop';
+export type { ToolExecutor, ToolLoopHooks, ToolLoopResult } from './engine/ToolLoop';
+
+// Utilities
+export { createLinkedAbort } from './util/Abort';
+export type { LinkedAbort } from './util/Abort';
+export { parseToolArguments } from './util/ToolArgs';

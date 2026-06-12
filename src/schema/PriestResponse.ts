@@ -1,6 +1,7 @@
 import { JSONValue } from './JSONValue';
+import { ToolCall } from './ToolTypes';
 
-export type FinishedReason = 'stop' | 'length' | 'error' | 'unknown';
+export type FinishedReason = 'stop' | 'length' | 'tool_calls' | 'error' | 'unknown';
 
 /** Execution metadata for a completed run. */
 export interface ExecutionInfo {
@@ -45,6 +46,12 @@ export interface PriestErrorModel {
 export interface PriestResponse {
   /** Raw text returned by the provider. Undefined on error or no content. */
   text?: string;
+  /**
+   * Tool calls requested by the model. Non-empty when finishedReason is
+   * 'tool_calls'. The caller executes them and re-runs with the results
+   * appended to PriestRequest.toolExchange.
+   */
+  toolCalls?: ToolCall[];
   execution: ExecutionInfo;
   /** Token usage. Undefined if the provider did not report usage data. */
   usage?: UsageInfo;

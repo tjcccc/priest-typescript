@@ -1,5 +1,20 @@
 # DEVLOG
 
+## 2026-06-12 — v2.4.0 — tool calling, structured streaming, cancellation, images
+
+Spec 2.4.0 implementation (reference implementation for this spec version; Python sync pending).
+
+- **Tool calling (caller executes):** `PriestRequest.tools` / `toolChoice` / `toolExchange`, `PriestResponse.toolCalls`, `finishedReason: 'tool_calls'`. Wire mappings for all three providers (OpenAI tools/tool_calls, Anthropic tool_use/tool_result with user-message merging, Ollama tools with synthesized `call_N` ids and `tool_name` results). Tool exchange turns are never persisted in sessions — schema interop with pre-2.4 SDKs preserved.
+- **`runWithTools()` loop helper:** generic call → execute → re-call loop with caller executor, optional `onToolCall` approval hook, iteration cap, and exchange trace.
+- **`streamEvents()`:** typed streaming (`text_delta`, `tool_call_start/delta/end`, `usage`, `done` with full `PriestResponse`); engine fallback wraps plain adapter `stream()`; `stream()` reimplemented as a filter over it.
+- **Cancellation:** `run`/`stream`/`streamEvents` accept `{ signal: AbortSignal }`; new `REQUEST_ABORTED` error code distinct from `PROVIDER_TIMEOUT`; connect timeout no longer applies once a stream's headers arrive.
+- **Images:** `PriestRequest.images` (`ImageInput` path/url/data parity with Python), OpenAI-format content blocks in the context builder, per-provider conversion (Ollama base64 `images` array, Anthropic image source blocks). New `IMAGE_LOAD_ERROR` code.
+- Anthropic default `max_tokens` corrected to the spec-defined 8096 (was 1024).
+- Finish-reason mapping tables aligned with the Python reference for all providers.
+- `PriestEngine.specVersion` → `"2.4.0"`. Tests: 84 (41 new).
+
+---
+
 ## 2026-05-08 — v2.3.0 — optional profile memory loading
 
 - Added `FilesystemProfileLoader(baseDir, { includeMemories: false })` so host apps can load profile identity/rules/custom fields without injecting profile memories

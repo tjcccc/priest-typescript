@@ -8,14 +8,16 @@ Node.js 18+ · TypeScript 5+ · One dependency (`better-sqlite3` for SQLite sess
 
 ## Overview
 
-`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.3.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.4.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
-The core API is two methods on `PriestEngine`:
+The core API is three methods on `PriestEngine` plus a tool loop helper:
 
 | Method | Returns | Use when |
 |--------|---------|----------|
-| `run(request)` | `Promise<PriestResponse>` | You need structured metadata (usage, latency, session info) |
-| `stream(request)` | `AsyncGenerator<string>` | You want to yield text as it arrives |
+| `run(request, options?)` | `Promise<PriestResponse>` | You need structured metadata (usage, latency, session info, tool calls) |
+| `stream(request, options?)` | `AsyncGenerator<string>` | You want to yield text as it arrives |
+| `streamEvents(request, options?)` | `AsyncGenerator<PriestStreamEvent>` | You want text deltas, tool-call progress, usage, and a final `PriestResponse` while streaming |
+| `runWithTools(engine, request, executor, hooks?)` | `Promise<ToolLoopResult>` | You want the call → execute → re-call tool loop handled for you |
 
 ---
 
@@ -297,12 +299,80 @@ const engine = new PriestEngine(loader, store, { my: new MyProvider() });
 
 ---
 
-## Spec
+## Tool Calling
 
-`@priest-ai/core` targets priest protocol spec **v2.3.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+The SDK transports tool definitions and calls; **your code executes the tools**. Either drive the loop yourself with `run()` + `request.toolExchange`, or use the helper:
 
 ```ts
-PriestEngine.specVersion  // '2.3.0'
+import { runWithTools } from '@priest-ai/core';
+
+const { response, exchange } = await runWithTools(
+  engine,
+  {
+    config: { provider: 'ollama', model: 'qwen3:8b' },
+    prompt: 'What does package.json define as the build script?',
+    tools: [{
+      name: 'read_file',
+      description: 'Read a local file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    }],
+  },
+  async call => ({ content: await readFileSomehow(call.arguments.path as string) }),
+  {
+    onToolCall: async call => ({ approved: call.name === 'read_file' }),  // optional approval gate
+    maxIterations: 5,
+  },
+);
+
+console.log(response.text);
+```
+
+Manual loop: when `response.execution.finishedReason === 'tool_calls'`, execute `response.toolCalls`, append an `{kind:'assistant', toolCalls}` turn plus `{kind:'tool_result', ...}` turns to `request.toolExchange`, and call `run()` again. Tool exchange turns are never persisted in sessions — only the original prompt and the final assistant text are stored, so sessions stay compatible with pre-2.4 SDKs.
+
+---
+
+## Structured Streaming
+
+```ts
+for await (const event of engine.streamEvents(request, { signal: controller.signal })) {
+  switch (event.type) {
+    case 'text_delta':     process.stdout.write(event.text); break;
+    case 'tool_call_end':  console.log('tool requested:', event.toolCall.name); break;
+    case 'done':           console.log('\nusage:', event.response.usage); break;
+  }
+}
+```
+
+The terminal `done` event carries the full `PriestResponse`. Provider errors land in `done.response.error` (like `run()`), not as thrown exceptions (unlike `stream()`).
+
+---
+
+## Cancellation
+
+`run()`, `stream()`, and `streamEvents()` accept `{ signal: AbortSignal }`. Caller aborts surface as `REQUEST_ABORTED`; timeouts remain `PROVIDER_TIMEOUT`.
+
+---
+
+## Images
+
+```ts
+await engine.run({
+  config: { provider: 'ollama', model: 'llama3.2-vision' },
+  prompt: 'What is in this image?',
+  images: [{ path: './photo.jpg', mediaType: 'image/jpeg' }],  // or { url } / { data }
+});
+```
+
+Exactly one of `path`/`url`/`data` per image. Ollama requires base64 sources (`path` or `data`); OpenAI-compatible and Anthropic accept all three. Images are not persisted in sessions.
+
+---
+
+## Spec
+
+`@priest-ai/core` targets priest protocol spec **v2.4.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+
+```ts
+PriestEngine.specVersion  // '2.4.0'
 ```
 
 ---

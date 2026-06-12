@@ -9,6 +9,8 @@ export type PriestErrorCode =
   | 'PROVIDER_ERROR'
   | 'PROVIDER_RATE_LIMITED'
   | 'REQUEST_INVALID'
+  | 'REQUEST_ABORTED'
+  | 'IMAGE_LOAD_ERROR'
   | 'INTERNAL_ERROR';
 
 /**
@@ -49,6 +51,14 @@ export class PriestError extends Error {
 
   static providerError(provider: string, message: string): PriestError {
     return new PriestError('PROVIDER_ERROR', `Provider '${provider}' error: ${message}`, { provider });
+  }
+
+  static requestAborted(provider: string): PriestError {
+    return new PriestError('REQUEST_ABORTED', `Request to provider '${provider}' was aborted by the caller`, { provider });
+  }
+
+  static imageLoadError(path: string, reason: string): PriestError {
+    return new PriestError('IMAGE_LOAD_ERROR', `Failed to load image '${path}': ${reason}`, { path });
   }
 
   static providerRateLimited(provider: string, retryAfter?: number): PriestError {

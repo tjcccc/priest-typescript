@@ -1,7 +1,9 @@
+import { ImageInput } from './ImageInput';
 import { JSONValue } from './JSONValue';
 import { OutputSpec } from './OutputSpec';
 import { PriestConfig } from './PriestConfig';
 import { SessionRef } from './SessionRef';
+import { ToolChoice, ToolDefinition, ToolExchangeTurn } from './ToolTypes';
 
 /** A single engine run request. */
 export interface PriestRequest {
@@ -26,4 +28,15 @@ export interface PriestRequest {
   output?: OutputSpec;
   /** Arbitrary caller metadata. Echoed unchanged into PriestResponse.metadata. */
   metadata?: Record<string, JSONValue>;
+  /** Tools the model may call. The caller executes them; the SDK only transports. */
+  tools?: ToolDefinition[];
+  /** Tool selection behavior. Only meaningful when tools is non-empty. */
+  toolChoice?: ToolChoice;
+  /**
+   * Tool loop history for the CURRENT user turn, appended after the user message.
+   * Never persisted in sessions — replayed by the caller on each loop iteration.
+   */
+  toolExchange?: ToolExchangeTurn[];
+  /** Images attached to the user turn. Not persisted in sessions. */
+  images?: ImageInput[];
 }

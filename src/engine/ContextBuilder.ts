@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+
+import { PriestError } from '../errors/PriestError';
 import { Profile } from '../profile/Profile';
-import { Message } from '../providers/ProviderAdapter';
+import { ContentBlock, Message } from '../providers/ProviderAdapter';
+import { DEFAULT_IMAGE_MEDIA_TYPE, ImageInput, validateImageInput } from '../schema/ImageInput';
 import { OutputSpec, PromptFormat } from '../schema/OutputSpec';
+import { ToolExchangeTurn } from '../schema/ToolTypes';
 import { Session } from '../session/SessionModel';
 
 // Spec-critical constants — must match spec/behavior/context-assembly.md exactly
@@ -50,6 +55,8 @@ export function buildMessages(opts: {
   userContext?: string[];
   outputSpec?: OutputSpec;
   maxSystemChars?: number;
+  images?: ImageInput[];
+  toolExchange?: ToolExchangeTurn[];
 }): Message[] {
   const {
     profile,
@@ -60,6 +67,8 @@ export function buildMessages(opts: {
     userContext = [],
     outputSpec,
     maxSystemChars,
+    images = [],
+    toolExchange = [],
   } = opts;
 
   // Step 1 — normalize profile memories
@@ -120,7 +129,46 @@ export function buildMessages(opts: {
   }
 
   const userParts = [prompt, ...userContext.filter(c => c.trim())];
-  messages.push({ role: 'user', content: userParts.join(SECTION_SEPARATOR) });
+  const userText = userParts.join(SECTION_SEPARATOR);
+
+  if (images.length > 0) {
+    // Multimodal user message: image blocks first, text last (mirrors Python).
+    const blocks: ContentBlock[] = images.map(imageToBlock);
+    blocks.push({ type: 'text', text: userText });
+    messages.push({ role: 'user', content: blocks });
+  } else {
+    messages.push({ role: 'user', content: userText });
+  }
+
+  // Tool loop history for the current turn. Appended after the user message,
+  // never persisted in sessions.
+  for (const turn of toolExchange) {
+    if (turn.kind === 'assistant') {
+      messages.push({ role: 'assistant', content: turn.text ?? '', toolCalls: turn.toolCalls });
+    } else {
+      messages.push({ role: 'tool', content: turn.content, toolCallId: turn.toolCallId, name: turn.name });
+    }
+  }
 
   return messages;
+}
+
+/** Convert an ImageInput to an OpenAI-format image_url content block. */
+function imageToBlock(image: ImageInput): ContentBlock {
+  validateImageInput(image);
+  const mediaType = image.mediaType ?? DEFAULT_IMAGE_MEDIA_TYPE;
+  if (image.url) {
+    return { type: 'image_url', image_url: { url: image.url } };
+  }
+  if (image.path) {
+    let b64: string;
+    try {
+      b64 = readFileSync(image.path).toString('base64');
+    } catch (err) {
+      throw PriestError.imageLoadError(image.path, String(err));
+    }
+    return { type: 'image_url', image_url: { url: `data:${mediaType};base64,${b64}` } };
+  }
+  // image.data is guaranteed non-null here by validateImageInput
+  return { type: 'image_url', image_url: { url: `data:${mediaType};base64,${image.data}` } };
 }
