@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { buildMessages } from '../src/engine/ContextBuilder';
 import { DEFAULT_PROFILE } from '../src/profile/DefaultProfile';
 import { Profile } from '../src/profile/Profile';
+import { Session, Turn } from '../src/session/SessionModel';
+
+function sessionWith(count: number): Session {
+  const turns: Turn[] = Array.from({ length: count }, (_, i) => ({
+    role: i % 2 === 0 ? 'user' : 'assistant',
+    content: `turn-${i}`,
+    timestamp: new Date(),
+  }));
+  return new Session('s', 'test', new Date(), new Date(), turns);
+}
+
+/** Roles of only the replayed session turns (between system and the final user prompt). */
+function replayedContents(msgs: { role: string; content: unknown }[]): unknown[] {
+  return msgs.slice(msgs[0].role === 'system' ? 1 : 0, -1).map(m => m.content);
+}
 
 const baseProfile: Profile = {
   name: 'test',
@@ -179,5 +194,39 @@ describe('ContextBuilder', () => {
     expect(system).toContain('A.');
     expect(system).toContain('B.');
     expect(system).toContain('C.');
+  });
+
+  // v2.6.0 — session turn window (sessionContextTurns)
+
+  it('replays all session turns when sessionContextTurns is unset (backward compatible)', () => {
+    const msgs = buildMessages({ profile: baseProfile, session: sessionWith(6), prompt: 'Hi' });
+    expect(replayedContents(msgs)).toEqual(['turn-0', 'turn-1', 'turn-2', 'turn-3', 'turn-4', 'turn-5']);
+  });
+
+  it('replays only the last N turns when sessionContextTurns is set', () => {
+    const msgs = buildMessages({ profile: baseProfile, session: sessionWith(6), prompt: 'Hi', sessionContextTurns: 2 });
+    expect(replayedContents(msgs)).toEqual(['turn-4', 'turn-5']);
+  });
+
+  it('replays no session turns when sessionContextTurns is 0', () => {
+    const msgs = buildMessages({ profile: baseProfile, session: sessionWith(6), prompt: 'Hi', sessionContextTurns: 0 });
+    expect(replayedContents(msgs)).toEqual([]);
+  });
+
+  it('snaps an odd-sized window down to a user turn (never opens on an orphan assistant)', () => {
+    // 8 turns (u0,a0,…,u3,a3); window 5 → naive start index 3 = assistant. Snap to 2 (user).
+    const msgs = buildMessages({ profile: baseProfile, session: sessionWith(8), prompt: 'Hi', sessionContextTurns: 5 });
+    const firstReplayed = msgs[msgs[0].role === 'system' ? 1 : 0];
+    expect(firstReplayed.role).toBe('user');
+    expect(replayedContents(msgs)).toEqual(['turn-2', 'turn-3', 'turn-4', 'turn-5', 'turn-6', 'turn-7']);
+  });
+
+  it('never un-hides already-summarized turns: window start is max(summarizedThrough, len - N)', () => {
+    const session = sessionWith(6);
+    session.applyCompaction('earlier conversation summary', 4); // turns[0..4) folded away
+    // Window of 5 would naively start at index 1, but summarizedThrough=4 wins.
+    const msgs = buildMessages({ profile: baseProfile, session, prompt: 'Hi', sessionContextTurns: 5 });
+    expect(replayedContents(msgs)).toEqual(['turn-4', 'turn-5']);
+    expect(msgs[0].content).toContain('earlier conversation summary');
   });
 });

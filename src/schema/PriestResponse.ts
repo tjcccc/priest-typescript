@@ -19,6 +19,13 @@ export interface UsageInfo {
   outputTokens?: number;
   /** inputTokens + outputTokens. Undefined if both are undefined. */
   totalTokens?: number;
+  /**
+   * Cached input tokens — the portion of inputTokens served from the
+   * provider's prompt/prefix cache (e.g. OpenAI `prompt_tokens_details.cached_tokens`,
+   * Anthropic `cache_read_input_tokens`). Billed at the provider's reduced
+   * cache-read rate. Undefined when the provider does not report it.
+   */
+  cachedInputTokens?: number;
   estimatedCostUSD?: number;
 }
 

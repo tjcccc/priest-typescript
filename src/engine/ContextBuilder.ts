@@ -17,6 +17,7 @@ const FORMAT_INSTRUCTIONS: Record<PromptFormat, string> = {
 
 const MEMORIES_HEADER        = '## Loaded Memories\n\n';
 const DYNAMIC_MEMORY_HEADER  = '## Memory\n\n';
+const SUMMARY_HEADER         = '## Conversation so far (summary)\n\n';
 const SECTION_SEPARATOR      = '\n\n';
 const MEMORY_SEPARATOR       = '\n';
 
@@ -27,6 +28,7 @@ function assembleSystemContent(
   custom: string | undefined,
   profileMems: string[],
   dynMems: string[],
+  conversationSummary: string | undefined,
   formatInstruction: string | undefined,
 ): string {
   const parts: string[] = [];
@@ -36,6 +38,9 @@ function assembleSystemContent(
   if (custom?.trim())  parts.push(custom.trim());
   if (profileMems.length > 0) parts.push(MEMORIES_HEADER + profileMems.join(MEMORY_SEPARATOR));
   if (dynMems.length   > 0)   parts.push(DYNAMIC_MEMORY_HEADER + dynMems.join(MEMORY_SEPARATOR));
+  // Compaction summary stands in for the folded-away history. Placed after
+  // memory (more volatile than profile/rules) and before format instruction.
+  if (conversationSummary?.trim()) parts.push(SUMMARY_HEADER + conversationSummary.trim());
   if (formatInstruction)       parts.push(formatInstruction);
   return parts.join(SECTION_SEPARATOR);
 }
@@ -57,6 +62,7 @@ export function buildMessages(opts: {
   maxSystemChars?: number;
   images?: ImageInput[];
   toolExchange?: ToolExchangeTurn[];
+  sessionContextTurns?: number;
 }): Message[] {
   const {
     profile,
@@ -69,6 +75,7 @@ export function buildMessages(opts: {
     maxSystemChars,
     images = [],
     toolExchange = [],
+    sessionContextTurns,
   } = opts;
 
   // Step 1 — normalize profile memories
@@ -87,20 +94,26 @@ export function buildMessages(opts: {
     dynamicMemory.push(stripped);
   }
 
+  // Compaction summary (when the session has been compacted): stands in for the
+  // folded-away leading turns, which are then skipped in Step 5.
+  const compaction = session?.getCompaction();
+  const conversationSummary = compaction?.summary;
+  const summarizedThrough = compaction?.summarizedThrough ?? 0;
+
   // Step 3 — trim to budget (only when maxSystemChars is set)
   if (maxSystemChars != null) {
     const fmt = outputSpec?.promptFormat ? FORMAT_INSTRUCTIONS[outputSpec.promptFormat] : undefined;
     // Trim dynamic memory tail-first
     while (dynamicMemory.length > 0) {
-      if (assembleSystemContent(context, profile.rules ?? '', profile.identity ?? '', profile.custom, profileMemories, dynamicMemory, fmt).length <= maxSystemChars) break;
+      if (assembleSystemContent(context, profile.rules ?? '', profile.identity ?? '', profile.custom, profileMemories, dynamicMemory, conversationSummary, fmt).length <= maxSystemChars) break;
       dynamicMemory.pop();
     }
     // Trim profile memories tail-first if still over budget
     while (profileMemories.length > 0) {
-      if (assembleSystemContent(context, profile.rules ?? '', profile.identity ?? '', profile.custom, profileMemories, dynamicMemory, fmt).length <= maxSystemChars) break;
+      if (assembleSystemContent(context, profile.rules ?? '', profile.identity ?? '', profile.custom, profileMemories, dynamicMemory, conversationSummary, fmt).length <= maxSystemChars) break;
       profileMemories.pop();
     }
-    // If still exceeded, continue — no further trimming (context/rules/identity/custom/format never trimmed)
+    // If still exceeded, continue — no further trimming (context/rules/identity/custom/summary/format never trimmed)
   }
 
   // Step 4 — assemble system content
@@ -112,6 +125,7 @@ export function buildMessages(opts: {
     profile.custom,
     profileMemories,
     dynamicMemory,
+    conversationSummary,
     formatInstruction,
   );
 
@@ -123,7 +137,25 @@ export function buildMessages(opts: {
   }
 
   if (session) {
-    for (const turn of session.turns) {
+    // Skip turns folded into the summary; replay only the recent tail.
+    let windowStart = summarizedThrough;
+    if (sessionContextTurns != null) {
+      // Cap to the last N turns — never un-hiding turns already folded into the
+      // summary (max with summarizedThrough).
+      windowStart = Math.max(summarizedThrough, session.turns.length - Math.max(0, sessionContextTurns));
+      // Snap down to a user turn so an odd-sized window never opens the replay on
+      // an orphan assistant reply (strict OpenAI-compatible backends, e.g.
+      // DashScope, reject a leading assistant message). Floored by
+      // summarizedThrough, since the summary already stands in for earlier turns.
+      while (
+        windowStart > summarizedThrough
+        && windowStart < session.turns.length
+        && session.turns[windowStart].role !== 'user'
+      ) {
+        windowStart -= 1;
+      }
+    }
+    for (const turn of session.turns.slice(windowStart)) {
       messages.push({ role: turn.role, content: turn.content });
     }
   }

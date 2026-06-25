@@ -42,7 +42,7 @@ export type AdapterStreamEvent =
   | { type: 'tool_call_start'; index: number; id?: string; name?: string }
   | { type: 'tool_call_delta'; index: number; argumentsDelta: string }
   | { type: 'tool_call_end'; index: number; toolCall: ToolCall }
-  | { type: 'usage'; inputTokens?: number; outputTokens?: number }
+  | { type: 'usage'; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }
   | { type: 'finish'; finishReason?: string };
 
 /** Interface that all provider adapters must implement. */

@@ -21,6 +21,8 @@ interface OpenAIStreamToolCallWire extends OpenAIToolCallWire {
 interface OpenAIUsageWire {
   prompt_tokens?: number;
   completion_tokens?: number;
+  /** Present on OpenAI/DashScope when prompt caching is active. */
+  prompt_tokens_details?: { cached_tokens?: number };
 }
 
 /** Options for hosts that wrap or rebrand an OpenAI-compatible endpoint. */
@@ -76,6 +78,7 @@ export class OpenAICompatProvider implements ProviderAdapter {
         finishReason: toolCalls.length > 0 ? 'tool_calls' : mapFinishReason(choice?.finish_reason ?? undefined),
         inputTokens: data.usage?.prompt_tokens,
         outputTokens: data.usage?.completion_tokens,
+        cachedInputTokens: data.usage?.prompt_tokens_details?.cached_tokens,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (err: unknown) {
@@ -158,7 +161,12 @@ export class OpenAICompatProvider implements ProviderAdapter {
         };
       }
       if (usage && (usage.prompt_tokens !== undefined || usage.completion_tokens !== undefined)) {
-        yield { type: 'usage', inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens };
+        yield {
+          type: 'usage',
+          inputTokens: usage.prompt_tokens,
+          outputTokens: usage.completion_tokens,
+          cachedInputTokens: usage.prompt_tokens_details?.cached_tokens,
+        };
       }
       yield {
         type: 'finish',

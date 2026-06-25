@@ -51,7 +51,7 @@ export class AnthropicProvider implements ProviderAdapter {
       const data = await response.json() as {
         content: AnthropicContentBlockWire[];
         stop_reason?: string;
-        usage?: { input_tokens: number; output_tokens: number };
+        usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number };
       };
 
       const text = data.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('');
@@ -64,6 +64,7 @@ export class AnthropicProvider implements ProviderAdapter {
         finishReason: mapStopReason(data.stop_reason, toolCalls.length > 0),
         inputTokens: data.usage?.input_tokens,
         outputTokens: data.usage?.output_tokens,
+        cachedInputTokens: data.usage?.cache_read_input_tokens,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (err: unknown) {
@@ -131,6 +132,7 @@ export class AnthropicProvider implements ProviderAdapter {
     let stopReason: string | undefined;
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let cachedInputTokens: number | undefined;
 
     try {
       while (true) {
@@ -150,7 +152,7 @@ export class AnthropicProvider implements ProviderAdapter {
             index?: number;
             content_block?: AnthropicContentBlockWire;
             delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
-            message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+            message?: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } };
             usage?: { input_tokens?: number; output_tokens?: number };
           };
           try {
@@ -162,6 +164,7 @@ export class AnthropicProvider implements ProviderAdapter {
           switch (currentEvent) {
             case 'message_start':
               inputTokens = parsed.message?.usage?.input_tokens ?? inputTokens;
+              cachedInputTokens = parsed.message?.usage?.cache_read_input_tokens ?? cachedInputTokens;
               break;
             case 'content_block_start': {
               const block = parsed.content_block;
@@ -211,7 +214,7 @@ export class AnthropicProvider implements ProviderAdapter {
       }
 
       if (inputTokens !== undefined || outputTokens !== undefined) {
-        yield { type: 'usage', inputTokens, outputTokens };
+        yield { type: 'usage', inputTokens, outputTokens, cachedInputTokens };
       }
       yield { type: 'finish', finishReason: mapStopReason(stopReason, toolCount > 0) };
     } catch (err: unknown) {

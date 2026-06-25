@@ -28,8 +28,8 @@ export type { FilesystemProfileLoaderOptions } from './profile/FilesystemProfile
 export { DEFAULT_PROFILE } from './profile/DefaultProfile';
 
 // Session
-export { Session } from './session/SessionModel';
-export type { Turn, TurnRole } from './session/SessionModel';
+export { Session, COMPACTION_METADATA_KEY } from './session/SessionModel';
+export type { Turn, TurnRole, CompactionState } from './session/SessionModel';
 export type { SessionStore } from './session/SessionStore';
 export { InMemorySessionStore } from './session/InMemorySessionStore';
 export { SQLiteSessionStore } from './session/SQLiteSessionStore';
@@ -51,6 +51,15 @@ export { AnthropicProvider } from './providers/AnthropicProvider';
 // Engine
 export { buildMessages } from './engine/ContextBuilder';
 export { PriestEngine } from './engine/PriestEngine';
+export {
+  shouldCompact,
+  planCompaction,
+  buildSummaryMessages,
+  COMPACTION_TRIGGER_RATIO,
+  DEFAULT_COMPACTION_KEEP_TURNS,
+  SUMMARY_MAX_OUTPUT_TOKENS,
+} from './engine/Compactor';
+export type { CompactionPlan } from './engine/Compactor';
 export type { PriestStreamEvent, RunOptions } from './engine/StreamEvents';
 export { runWithTools } from './engine/ToolLoop';
 export type { ToolExecutor, ToolLoopHooks, ToolLoopResult } from './engine/ToolLoop';

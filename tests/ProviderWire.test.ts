@@ -273,3 +273,59 @@ describe('OllamaProvider wire format', () => {
     await expect(pending).rejects.toMatchObject({ code: 'REQUEST_ABORTED' });
   });
 });
+
+describe('cached input tokens (prompt-cache visibility)', () => {
+  it('OpenAI-compat complete parses prompt_tokens_details.cached_tokens', async () => {
+    mockFetch(jsonResponse({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1200, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 1024 } },
+    }));
+    const result = await new OpenAICompatProvider('https://api.test').complete([{ role: 'user', content: 'go' }], config);
+    expect(result.inputTokens).toBe(1200);
+    expect(result.cachedInputTokens).toBe(1024);
+  });
+
+  it('OpenAI-compat complete leaves cachedInputTokens undefined when the provider omits it', async () => {
+    mockFetch(jsonResponse({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 9, completion_tokens: 4 },
+    }));
+    const result = await new OpenAICompatProvider('https://api.test').complete([{ role: 'user', content: 'go' }], config);
+    expect(result.cachedInputTokens).toBeUndefined();
+  });
+
+  it('OpenAI-compat stream emits cachedInputTokens on the usage event', async () => {
+    mockFetch(sseResponse([
+      'data: {"choices":[{"delta":{"content":"hi"}}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1200,"completion_tokens":40,"prompt_tokens_details":{"cached_tokens":1024}}}',
+      'data: [DONE]',
+    ]));
+    const events = await collectEvents(new OpenAICompatProvider('https://api.test').streamEvents([{ role: 'user', content: 'go' }], config));
+    const usage = events.find(e => e.type === 'usage') as Extract<AdapterStreamEvent, { type: 'usage' }>;
+    expect(usage).toMatchObject({ inputTokens: 1200, outputTokens: 40, cachedInputTokens: 1024 });
+  });
+
+  it('Anthropic complete parses cache_read_input_tokens', async () => {
+    mockFetch(jsonResponse({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1200, output_tokens: 40, cache_read_input_tokens: 1024 },
+    }));
+    const result = await new AnthropicProvider('key').complete([{ role: 'user', content: 'go' }], config);
+    expect(result.cachedInputTokens).toBe(1024);
+  });
+
+  it('Anthropic stream emits cachedInputTokens from message_start', async () => {
+    mockFetch(sseResponse([
+      'event: message_start',
+      'data: {"message":{"usage":{"input_tokens":1200,"cache_read_input_tokens":1024}}}',
+      'event: content_block_delta',
+      'data: {"index":0,"delta":{"type":"text_delta","text":"hi"}}',
+      'event: message_delta',
+      'data: {"delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40}}',
+    ]));
+    const events = await collectEvents(new AnthropicProvider('key').streamEvents([{ role: 'user', content: 'go' }], config));
+    const usage = events.find(e => e.type === 'usage') as Extract<AdapterStreamEvent, { type: 'usage' }>;
+    expect(usage).toMatchObject({ inputTokens: 1200, outputTokens: 40, cachedInputTokens: 1024 });
+  });
+});

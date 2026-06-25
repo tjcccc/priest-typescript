@@ -14,8 +14,8 @@ class StaticProfileLoader implements ProfileLoader {
 const config = { provider: 'mock', model: 'test-model' };
 
 describe('PriestEngine', () => {
-  it('specVersion is 2.4.0', () => {
-    expect(PriestEngine.specVersion).toBe('2.4.0');
+  it('specVersion is 2.6.0', () => {
+    expect(PriestEngine.specVersion).toBe('2.6.0');
   });
 
   it('returns ok response for registered provider', async () => {

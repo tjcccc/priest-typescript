@@ -1,5 +1,28 @@
 # DEVLOG
 
+## 2026-06-25 — v2.6.0 — session turn window
+
+TypeScript SDK leads this spec version; other-SDK (Python/Rust/.NET/Swift) sync pending.
+
+- **`PriestConfig.sessionContextTurns`:** a hard cap on how many recent session turns are replayed into a request. When set, only the last N turns (after any compaction summary) reach the model; older turns stay on disk but are not sent. `0` replays none (summary only); unset replays all (default — fully backward compatible). Independent of `maxContextTokens`, which remains the budget-triggered compaction safety net.
+- **`ContextBuilder`:** the Step-5 replay now starts at `max(summarizedThrough, turns.length - N)` when a window is set — so a window never un-hides turns already folded into the summary, and the summary prefix is unchanged. An **odd-sized window snaps down to a user turn** (floored by `summarizedThrough`) so the replay never opens on an orphan assistant reply, which strict OpenAI-compatible backends (e.g. DashScope) reject. Deterministic and free (no extra summarization calls). Threaded through `buildMessages({ sessionContextTurns })` from `request.config.sessionContextTurns`.
+- **Use case:** lets a host bound per-turn cost on token-limited models by sending only the last few turns, instead of growing history until the token budget trips compaction.
+- `PriestEngine.specVersion` → `"2.6.0"`. Tests: 107 (5 new — turn-window: all/last-N/0/odd-window user-snap/summarizedThrough-floor).
+
+---
+
+## 2026-06-25 — v2.5.0 — conversation compaction + cached-token visibility
+
+TypeScript SDK leads this spec version; spec doc + other-SDK (Python/Rust/.NET/Swift) sync pending until the TS surface stabilizes.
+
+- **Cached input tokens:** `UsageInfo.cachedInputTokens` and `AdapterResult.cachedInputTokens` / the `usage` stream event now carry the prompt-cache hit count. Parsed from OpenAI-compat `usage.prompt_tokens_details.cached_tokens` (DashScope/OpenAI) and Anthropic `cache_read_input_tokens` (complete + stream). Lets hosts see prefix-cache behavior instead of only gross input.
+- **Conversation compaction:** sessions can now be bounded instead of replaying full history forever (cost was linear per turn, quadratic per session). New `PriestConfig.maxContextTokens` (enables compaction; unset = off, fully backward compatible) and `compactionKeepTurns` (default 6). When a chat turn's reported input usage crosses ~80% of the budget, the engine folds older turns into a running summary via a provider summarization call and replays only `summary + recent tail`. Non-destructive: raw turns stay in the store, only the replayed view shrinks; the summary lives in session metadata (`__compaction`) so the SQLite schema and cross-SDK interop are unchanged.
+- **Recursive + safe:** repeated compaction folds only newly-aged turns into the existing summary. The summary prompt is told durable facts already live in memory (avoids double-paying the memory extractor). Trigger is measured on plain chat turns only — agent/tool turns are skipped (their input reflects intra-run tool context, not the clean session; that growth is host-side).
+- **APIs:** `engine.compactSession(id, config, options?)` for a manual `/compact`; `ContextBuilder` injects a `## Conversation so far (summary)` system section and skips folded turns. New `Compactor` exports (`shouldCompact`, `planCompaction`, `buildSummaryMessages`, constants), `CompactionState`, `COMPACTION_METADATA_KEY`.
+- `PriestEngine.specVersion` → `"2.5.0"`. Tests: 100 (16 new — 5 cached-token, 11 compaction).
+
+---
+
 ## 2026-06-12 — v2.4.0 — tool calling, structured streaming, cancellation, images
 
 Spec 2.4.0 implementation (reference implementation for this spec version; Python sync pending).

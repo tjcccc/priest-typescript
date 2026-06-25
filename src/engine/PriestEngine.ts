@@ -8,6 +8,14 @@ import { ToolCall } from '../schema/ToolTypes';
 import { SessionStore } from '../session/SessionStore';
 import { Session } from '../session/SessionModel';
 import { buildMessages } from './ContextBuilder';
+import {
+  DEFAULT_COMPACTION_KEEP_TURNS,
+  SUMMARY_MAX_OUTPUT_TOKENS,
+  buildSummaryMessages,
+  planCompaction,
+  shouldCompact,
+} from './Compactor';
+import { PriestConfig } from '../schema/PriestConfig';
 import { PriestStreamEvent, RunOptions } from './StreamEvents';
 
 /**
@@ -17,7 +25,7 @@ import { PriestStreamEvent, RunOptions } from './StreamEvents';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '2.4.0';
+  static readonly specVersion = '2.6.0';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
@@ -38,6 +46,7 @@ export class PriestEngine {
     const adapter = this.adapter(request);
     const loadedProfile = this.profileLoader.load(profile);
     const [session, isNewSession] = await this.resolveSession(request);
+    await this.maybeCompact(session, request.config, options);
     const messages = this.messagesFor(request, loadedProfile, session);
 
     let text: string | undefined;
@@ -45,6 +54,7 @@ export class PriestEngine {
     let finishReason: string | undefined;
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let cachedInputTokens: number | undefined;
     let errorModel: PriestErrorModel | undefined;
 
     try {
@@ -54,6 +64,7 @@ export class PriestEngine {
       finishReason = result.finishReason;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
+      cachedInputTokens = result.cachedInputTokens;
     } catch (err) {
       finishReason = 'error';
       errorModel = toErrorModel(err);
@@ -68,13 +79,14 @@ export class PriestEngine {
       if (!toolCalls) {
         session.appendTurn('user', request.prompt);
         if (text !== undefined) session.appendTurn('assistant', text);
+        this.recordChatUsage(session, request, inputTokens);
         await this.sessionStore.save(session);
       }
       sessionInfo = { id: session.id, isNew: isNewSession, turnCount: session.turns.length };
     }
 
     const latencyMs = Date.now() - startMs;
-    const usage = buildUsage(inputTokens, outputTokens);
+    const usage = buildUsage(inputTokens, outputTokens, cachedInputTokens);
 
     return {
       text,
@@ -127,6 +139,7 @@ export class PriestEngine {
     const adapter = this.adapter(request);
     const loadedProfile = this.profileLoader.load(profile);
     const [session, isNewSession] = await this.resolveSession(request);
+    await this.maybeCompact(session, request.config, options);
     const messages = this.messagesFor(request, loadedProfile, session);
     const callOptions = this.callOptions(request, options);
 
@@ -135,6 +148,7 @@ export class PriestEngine {
     let finishReason: string | undefined;
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let cachedInputTokens: number | undefined;
     let errorModel: PriestErrorModel | undefined;
 
     try {
@@ -159,7 +173,8 @@ export class PriestEngine {
           case 'usage':
             inputTokens = event.inputTokens ?? inputTokens;
             outputTokens = event.outputTokens ?? outputTokens;
-            yield { type: 'usage', usage: buildUsage(inputTokens, outputTokens) as UsageInfo };
+            cachedInputTokens = event.cachedInputTokens ?? cachedInputTokens;
+            yield { type: 'usage', usage: buildUsage(inputTokens, outputTokens, cachedInputTokens) as UsageInfo };
             break;
           case 'finish':
             finishReason = event.finishReason ?? finishReason;
@@ -180,6 +195,7 @@ export class PriestEngine {
       if (!hasToolCalls && text !== undefined) {
         session.appendTurn('user', request.prompt);
         session.appendTurn('assistant', text);
+        this.recordChatUsage(session, request, inputTokens);
         await this.sessionStore.save(session);
       }
       sessionInfo = { id: session.id, isNew: isNewSession, turnCount: session.turns.length };
@@ -195,7 +211,7 @@ export class PriestEngine {
         profile,
         finishedReason: (finishReason as PriestResponse['execution']['finishedReason']) ?? undefined,
       },
-      usage: buildUsage(inputTokens, outputTokens),
+      usage: buildUsage(inputTokens, outputTokens, cachedInputTokens),
       session: sessionInfo,
       error: errorModel,
       metadata: request.metadata ?? {},
@@ -203,6 +219,69 @@ export class PriestEngine {
     };
 
     yield { type: 'done', response };
+  }
+
+  /**
+   * Compact a session on demand: fold older turns into the running summary,
+   * keeping the most recent `compactionKeepTurns`. Used by hosts for a manual
+   * `/compact`. Returns whether anything was folded and the new coverage point.
+   * Throws SESSION_NOT_FOUND when the id is unknown.
+   */
+  async compactSession(
+    sessionId: string,
+    config: PriestConfig,
+    options?: RunOptions,
+  ): Promise<{ compacted: boolean; summarizedThrough?: number }> {
+    if (!this.sessionStore) return { compacted: false };
+    const session = await this.sessionStore.get(sessionId);
+    if (!session) throw PriestError.sessionNotFound(sessionId);
+    const compacted = await this.compact(session, config, options);
+    return { compacted, summarizedThrough: session.getCompaction().summarizedThrough };
+  }
+
+  /** Record a turn's input size as the compaction trigger signal.
+   *  Skipped only when the turn *replays a tool exchange* — then the input is
+   *  inflated by turn-local tool context (web results, agent iterations) rather
+   *  than the clean persisted session. Merely *offering* tools (e.g. chat with
+   *  web_search available but not invoked) still records: that turn's input is
+   *  the real conversation size. Host-side intra-run growth is handled host-side. */
+  private recordChatUsage(session: Session, request: PriestRequest, inputTokens: number | undefined): void {
+    if (request.toolExchange && request.toolExchange.length > 0) return;
+    session.recordInputTokens(inputTokens);
+  }
+
+  /** Compact before a turn when the previous turn's input usage crossed the budget.
+   *  Threads the run's abort signal so a caller cancel (e.g. Ctrl-C) interrupts the
+   *  summarization call rather than blocking on it. */
+  private async maybeCompact(session: Session | null, config: PriestConfig, options?: RunOptions): Promise<void> {
+    if (!session || !this.sessionStore) return;
+    if (!shouldCompact(session.getCompaction().lastInputTokens, config.maxContextTokens)) return;
+    await this.compact(session, config, options);
+  }
+
+  /** Fold turns into the summary via a provider summarization call; persists the result. */
+  private async compact(session: Session, config: PriestConfig, options?: RunOptions): Promise<boolean> {
+    if (!this.sessionStore) return false;
+    const keepTurns = config.compactionKeepTurns ?? DEFAULT_COMPACTION_KEEP_TURNS;
+    const existing = session.getCompaction();
+    const plan = planCompaction(session.turns, existing.summarizedThrough ?? 0, keepTurns);
+    if (!plan) return false;
+
+    const adapter = this.adapters[config.provider];
+    if (!adapter) throw PriestError.providerNotRegistered(config.provider);
+
+    const messages = buildSummaryMessages(existing.summary, plan.toSummarize);
+    const summaryConfig: PriestConfig = {
+      ...config,
+      maxOutputTokens: config.maxOutputTokens ?? SUMMARY_MAX_OUTPUT_TOKENS,
+    };
+    const result = await adapter.complete(messages, summaryConfig, undefined, options?.signal ? { signal: options.signal } : undefined);
+    const summary = (result.text ?? '').trim();
+    if (!summary) return false;
+
+    session.applyCompaction(summary, plan.summarizedThrough);
+    await this.sessionStore.save(session);
+    return true;
   }
 
   private adapter(request: PriestRequest): ProviderAdapter {
@@ -223,6 +302,7 @@ export class PriestEngine {
       maxSystemChars: request.config.maxSystemChars,
       images: request.images,
       toolExchange: request.toolExchange,
+      sessionContextTurns: request.config.sessionContextTurns,
     });
   }
 
@@ -257,12 +337,13 @@ export class PriestEngine {
   }
 }
 
-function buildUsage(inputTokens?: number, outputTokens?: number): UsageInfo | undefined {
+function buildUsage(inputTokens?: number, outputTokens?: number, cachedInputTokens?: number): UsageInfo | undefined {
   if (inputTokens === undefined && outputTokens === undefined) return undefined;
   return {
     inputTokens,
     outputTokens,
     totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0) || undefined,
+    cachedInputTokens,
     estimatedCostUSD: undefined,
   };
 }
