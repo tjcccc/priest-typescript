@@ -246,6 +246,11 @@ export class OpenAICompatProvider implements ProviderAdapter {
       model: config.model,
       messages: toOpenAIMessages(messages),
       stream,
+      // Streaming usage is opt-in: without this, OpenAI-compatible gateways
+      // (e.g. DashScope) report token usage only for models that volunteer it,
+      // so cost/context goes missing for the rest. `providerOptions` can still
+      // override it below.
+      ...(stream ? { stream_options: { include_usage: true } } : {}),
       ...(config.providerOptions ?? {}),
     };
     if (outputSpec?.jsonSchema != null) {

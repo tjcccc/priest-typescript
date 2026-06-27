@@ -1,5 +1,12 @@
 # DEVLOG
 
+## 2026-06-27 — v2.6.1 — streaming token usage (OpenAI-compat)
+
+TypeScript SDK only; other-SDK (Python/Rust/.NET/Swift) sync intentionally deferred.
+
+- **`OpenAICompatProvider` now sets `stream_options: { include_usage: true }` on streaming requests.** Per the OpenAI-compatible streaming protocol, gateways emit a final usage chunk only when this option is set; without it, usage is reported solely for models that volunteer it. On DashScope (Alibaba Bailian) the Qwen models volunteered usage but third-party models (e.g. `deepseek-v4-flash`) did not, so streaming chat showed no token cost / context. The streaming parser already captured `parsed.usage`; this just asks for it. Non-streaming (`complete`) is unchanged (it reads `usage` from the single JSON response). `providerOptions` still overrides, so a backend that rejects the field can opt out.
+- Tests: ProviderWire wire-format checks that streaming sends `stream_options.include_usage` and non-streaming omits it, plus a `providerOptions` override case (109 total pass).
+
 ## 2026-06-25 — v2.6.0 — session turn window
 
 TypeScript SDK leads this spec version; other-SDK (Python/Rust/.NET/Swift) sync pending.

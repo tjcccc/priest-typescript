@@ -108,6 +108,27 @@ describe('OpenAICompatProvider wire format', () => {
     const messages = sentBody(fn).messages as Array<Record<string, unknown>>;
     expect(messages[0].content).toEqual(blocks);
   });
+
+  it('requests usage on streaming requests and omits it when not streaming', async () => {
+    const streamFn = mockFetch(sseResponse(['data: {"choices":[{"delta":{},"finish_reason":"stop"}]}', 'data: [DONE]']));
+    const provider = new OpenAICompatProvider('https://api.test');
+    await collectEvents(provider.streamEvents([{ role: 'user', content: 'go' }], config));
+    expect(sentBody(streamFn)).toMatchObject({ stream: true, stream_options: { include_usage: true } });
+
+    vi.unstubAllGlobals();
+    const completeFn = mockFetch(jsonResponse({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }));
+    await provider.complete([{ role: 'user', content: 'go' }], config);
+    const body = sentBody(completeFn);
+    expect(body.stream).toBe(false);
+    expect(body).not.toHaveProperty('stream_options');
+  });
+
+  it('lets providerOptions override stream_options', async () => {
+    const fn = mockFetch(sseResponse(['data: {"choices":[{"delta":{},"finish_reason":"stop"}]}', 'data: [DONE]']));
+    const provider = new OpenAICompatProvider('https://api.test');
+    await collectEvents(provider.streamEvents([{ role: 'user', content: 'go' }], { ...config, providerOptions: { stream_options: { include_usage: false } } }));
+    expect(sentBody(fn)).toMatchObject({ stream_options: { include_usage: false } });
+  });
 });
 
 describe('AnthropicProvider wire format', () => {
