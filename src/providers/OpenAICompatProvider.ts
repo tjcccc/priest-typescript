@@ -31,6 +31,10 @@ export interface OpenAICompatProviderOptions {
   url?: string;
   /** Extra headers merged over the defaults (Content-Type, Authorization). */
   headers?: Record<string, string>;
+  /** Optional undici dispatcher (e.g. a ProxyAgent) applied to every request.
+   * Node's fetch ignores HTTPS_PROXY by default, so callers behind a proxy pass
+   * one here. Typed as unknown to avoid a hard undici type dependency. */
+  dispatcher?: unknown;
 }
 
 /** OpenAI-compatible provider. Uses SSE streaming via /v1/chat/completions. */
@@ -56,7 +60,8 @@ export class OpenAICompatProvider implements ProviderAdapter {
         headers: this.headers(),
         body: JSON.stringify(body),
         signal: link.signal,
-      });
+        ...(this.options.dispatcher ? { dispatcher: this.options.dispatcher } : {}),
+      } as RequestInit);
 
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
@@ -115,7 +120,8 @@ export class OpenAICompatProvider implements ProviderAdapter {
         headers: this.headers(),
         body: JSON.stringify(body),
         signal: link.signal,
-      });
+        ...(this.options.dispatcher ? { dispatcher: this.options.dispatcher } : {}),
+      } as RequestInit);
     } catch (err: unknown) {
       link.dispose();
       throw this.mapError(err, link, config);

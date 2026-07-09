@@ -1,5 +1,13 @@
 # DEVLOG
 
+## 2026-07-10 — v2.7.0 — OpenAI-compat proxy dispatcher
+
+TypeScript SDK only; no spec/protocol change (`specVersion` stays `2.6.0`), so other-SDK (Python/Rust/.NET/Swift) sync is not required.
+
+- **`OpenAICompatProvider` now accepts an optional `dispatcher` option** (`OpenAICompatProviderOptions.dispatcher`), applied to both `complete()` and `streamEvents()` fetch calls. Node's built-in `fetch` ignores `HTTPS_PROXY`, so a caller behind a proxy had no way to route OpenAI-compatible chat/completions requests — the only escape was a global undici dispatcher, which also proxies unrelated (e.g. localhost) traffic. This lets the caller pass a per-request undici dispatcher (e.g. a `ProxyAgent`) so a single provider can be proxied while others stay direct. Typed as `unknown` to avoid a hard undici type dependency; spread into the fetch init only when set, so behavior is unchanged when omitted.
+- Motivating case: a downstream (marifold) user in China needed to reach `api.x.ai` through a proxy for one provider while keeping local/other providers direct. The Responses-API path there was already proxyable; the delegated chat/completions path (this provider) was not.
+- No new tests: purely additive plumbing with no wire-format change; existing 109 pass. `PriestEngine.specVersion` unchanged.
+
 ## 2026-06-27 — v2.6.1 — streaming token usage (OpenAI-compat)
 
 TypeScript SDK only; other-SDK (Python/Rust/.NET/Swift) sync intentionally deferred.
