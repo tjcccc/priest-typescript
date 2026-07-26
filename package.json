@@ -1,6 +1,6 @@
 {
   "name": "@priest-ai/core",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "TypeScript/Node.js SDK for the priest AI orchestration protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
-    "typescript": "^5.5.0",
+    "typescript": "^7.0.2",
     "vitest": "^2.0.0"
   },
   "engines": {

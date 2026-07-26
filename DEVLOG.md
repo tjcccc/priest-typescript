@@ -1,5 +1,13 @@
 # DEVLOG
 
+## 2026-07-26 — v2.7.1 — TypeScript 7 native compiler
+
+TypeScript SDK tooling only; no public API or spec/protocol change (`specVersion` stays `2.6.0`), so other-SDK (Python/Rust/.NET/Swift) sync is not required.
+
+- Upgraded the development compiler from TypeScript 5 to TypeScript 7.0.2, adopting the stable Go-native `tsc` implementation.
+- Replaced the removed legacy Node module-resolution mode with `NodeNext`. Because this package remains untyped CommonJS, emitted JavaScript and package consumption stay backward compatible.
+- Verification: `pnpm build`, `pnpm typecheck`, and `pnpm test`.
+
 ## 2026-07-10 — v2.7.0 — OpenAI-compat proxy dispatcher
 
 TypeScript SDK only; no spec/protocol change (`specVersion` stays `2.6.0`), so other-SDK (Python/Rust/.NET/Swift) sync is not required.

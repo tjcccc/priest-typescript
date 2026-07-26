@@ -2,7 +2,7 @@
 
 TypeScript SDK for the [priest](https://github.com/tjcccc/priest) AI orchestration protocol.
 
-Node.js 18+ · TypeScript 5+ · One dependency (`better-sqlite3` for SQLite sessions)
+Node.js 18+ · Native TypeScript 7 · One dependency (`better-sqlite3` for SQLite sessions)
 
 ---
 
