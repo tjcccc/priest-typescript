@@ -8,7 +8,7 @@ Node.js 18+ · Native TypeScript 7 · One dependency (`better-sqlite3` for SQLit
 
 ## Overview
 
-`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.4.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.8.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
 The core API is three methods on `PriestEngine` plus a tool loop helper:
 
@@ -71,16 +71,21 @@ for await (const chunk of engine.stream({
 }
 ```
 
-### Anthropic or OpenAI-compatible providers
+### Anthropic, OpenAI Responses, or OpenAI-compatible providers
 
 ```ts
-import { AnthropicProvider, OpenAICompatProvider } from '@priest-ai/core';
+import {
+  AnthropicProvider,
+  OpenAICompatProvider,
+  OpenAIResponsesProvider,
+} from '@priest-ai/core';
 
 const engine = new PriestEngine(
   new FilesystemProfileLoader('./profiles'),
   undefined,
   {
     anthropic: new AnthropicProvider('sk-ant-...'),
+    responses: new OpenAIResponsesProvider('https://api.openai.com', 'sk-...'),
     openai:    new OpenAICompatProvider('https://api.openai.com', 'sk-...'),
   },
 );
@@ -182,19 +187,41 @@ const response = await engine.run({
   memory: ['User prefers bullet points.', 'Active sprint: v3.0'],
 
   // Per-turn user context — appended to the user message
-  user_context: ['Recent tasks: [fix login bug, update README]'],
+  userContext: ['Recent tasks: [fix login bug, update README]'],
 });
 ```
 
-When `max_system_chars` is set on the config, the engine trims `memory` entries tail-first, then `profile.memories` tail-first. `context`, rules, identity, custom, and format instructions are never trimmed.
+When `maxSystemChars` is set on the config, the engine trims `memory` entries tail-first, then `profile.memories` tail-first. `context`, rules, identity, custom, and format instructions are never trimmed.
 
 ```ts
 const response = await engine.run({
-  config: { provider: 'ollama', model: 'llama3.2', max_system_chars: 4096 },
+  config: { provider: 'ollama', model: 'llama3.2', maxSystemChars: 4096 },
   prompt: 'Summarize my notes.',
   memory: longMemoryList,
 });
 ```
+
+### Bounded conversation context
+
+Long-lived sessions have two independent controls:
+
+```ts
+const config = {
+  provider: 'responses',
+  model: 'gpt-5.6',
+
+  // Hard replay window: only the latest 12 raw turns are sent.
+  sessionContextTurns: 12,
+
+  // Usage-triggered compaction safety net.
+  maxContextTokens: 100_000,
+  compactionKeepTurns: 6,
+};
+```
+
+`sessionContextTurns` limits how many recent raw turns are replayed on every request. `0` sends only an existing compaction summary; leaving it unset replays all eligible turns.
+
+`maxContextTokens` enables conversation compaction. When the previous clean chat turn reports input usage at roughly 80% of that budget, the next run summarizes older turns and keeps the recent tail. Raw session turns are not deleted; the running summary is stored in session metadata under `__compaction`. Use `engine.compactSession(id, config, options?)` to compact manually.
 
 ---
 
@@ -228,7 +255,7 @@ const response = await engine.run({
 });
 ```
 
-`jsonSchema` maps to `response_format:{type:"json_schema"}` for OpenAI-compat, `format:<schema>` for Ollama (v0.5+), and system message injection for Anthropic. It takes precedence over `providerFormat` when both are set.
+`jsonSchema` maps to `text.format:{type:"json_schema"}` for OpenAI Responses, `response_format:{type:"json_schema"}` for OpenAI-compat, `format:<schema>` for Ollama, and system message injection for Anthropic. It takes precedence over `providerFormat` when both are set.
 
 `response.text` is always the raw string. `@priest-ai/core` never parses the output.
 
@@ -269,9 +296,27 @@ try {
 |-----|-------|-------|
 | any | `OllamaProvider` | NDJSON streaming; local by default (`http://localhost:11434`) |
 | any | `AnthropicProvider` | SSE streaming; requires API key |
+| any | `OpenAIResponsesProvider` | First-class Responses API; semantic SSE, tools, images, structured output, reasoning summaries |
 | any | `OpenAICompatProvider` | SSE streaming; works with any OpenAI-compatible endpoint |
 
 Provider keys are arbitrary strings — the key you register in the `adapters` map must match the `provider` field in the request config.
+
+### OpenAI Responses endpoint and proxy configuration
+
+```ts
+const provider = new OpenAIResponsesProvider(
+  'https://api.openai.com',
+  process.env.OPENAI_API_KEY,
+  {
+    // Optional exact endpoint; no model-name endpoint guessing is performed.
+    url: 'https://api.openai.com/v1/responses',
+    headers: { 'X-Application': 'my-host' },
+    dispatcher: proxyAgent, // optional undici-compatible dispatcher
+  },
+);
+```
+
+The provider defaults to `store: false`, because priest owns conversation and tool-loop state. `config.providerOptions` can override provider-native fields such as `store`, `temperature`, or service settings. `model`, assembled `input`, and the operation's `stream` mode remain adapter-owned.
 
 ---
 
@@ -327,7 +372,38 @@ const { response, exchange } = await runWithTools(
 console.log(response.text);
 ```
 
-Manual loop: when `response.execution.finishedReason === 'tool_calls'`, execute `response.toolCalls`, append an `{kind:'assistant', toolCalls}` turn plus `{kind:'tool_result', ...}` turns to `request.toolExchange`, and call `run()` again. Tool exchange turns are never persisted in sessions — only the original prompt and the final assistant text are stored, so sessions stay compatible with pre-2.4 SDKs.
+Manual loop: when `response.execution.finishedReason === 'tool_calls'`, execute `response.toolCalls`, append an `{kind:'assistant', toolCalls, reasoning: response.reasoning}` turn plus `{kind:'tool_result', ...}` turns to `request.toolExchange`, and call `run()` again. `runWithTools()` copies the reasoning continuation automatically. Tool exchange turns are never persisted in sessions — only the original prompt and the final assistant text are stored.
+
+---
+
+## Reasoning
+
+Reasoning is optional and provider/model support varies:
+
+```ts
+const response = await engine.run({
+  config: {
+    provider: 'responses',
+    model: 'gpt-5.6',
+    reasoning: {
+      enabled: true,
+      effort: 'medium',
+      summary: 'auto',
+    },
+  },
+  prompt: 'Plan the next operation.',
+});
+
+console.log(response.reasoning?.summary);          // provider-supplied summary
+console.log(response.usage?.reasoningTokens);      // subset of outputTokens
+```
+
+Priest never exposes private chain-of-thought:
+
+- OpenAI Responses summary blocks and Anthropic summarized thinking are displayable.
+- Signed/encrypted provider state is carried opaquely during the current tool loop and replayed unchanged.
+- Ollama's `message.thinking` is documented as a reasoning trace, so priest does not expose it as a summary.
+- Reasoning continuation is never persisted in sessions.
 
 ---
 
@@ -337,6 +413,7 @@ Manual loop: when `response.execution.finishedReason === 'tool_calls'`, execute 
 for await (const event of engine.streamEvents(request, { signal: controller.signal })) {
   switch (event.type) {
     case 'text_delta':     process.stdout.write(event.text); break;
+    case 'reasoning_summary_delta': console.error(event.text); break;
     case 'tool_call_end':  console.log('tool requested:', event.toolCall.name); break;
     case 'done':           console.log('\nusage:', event.response.usage); break;
   }
@@ -344,6 +421,26 @@ for await (const event of engine.streamEvents(request, { signal: controller.sign
 ```
 
 The terminal `done` event carries the full `PriestResponse`. Provider errors land in `done.response.error` (like `run()`), not as thrown exceptions (unlike `stream()`).
+
+`stream()` continues to yield answer text only. Use `streamEvents()` to receive provider-supplied reasoning-summary deltas.
+
+---
+
+## Usage and cached input
+
+When a provider reports usage, `response.usage` can include:
+
+```ts
+{
+  inputTokens,
+  outputTokens,
+  totalTokens,
+  cachedInputTokens,
+  reasoningTokens,
+}
+```
+
+`cachedInputTokens` is the portion of input served from a provider prompt cache. `reasoningTokens` is a subset of `outputTokens`; neither subset is added again when calculating `totalTokens`.
 
 ---
 
@@ -363,16 +460,16 @@ await engine.run({
 });
 ```
 
-Exactly one of `path`/`url`/`data` per image. Ollama requires base64 sources (`path` or `data`); OpenAI-compatible and Anthropic accept all three. Images are not persisted in sessions.
+Exactly one of `path`/`url`/`data` per image. Ollama requires base64 sources (`path` or `data`); OpenAI Responses, OpenAI-compatible, and Anthropic accept all three. Images are not persisted in sessions.
 
 ---
 
 ## Spec
 
-`@priest-ai/core` targets priest protocol spec **v2.4.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+`@priest-ai/core` targets priest protocol spec **v2.8.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
 
 ```ts
-PriestEngine.specVersion  // '2.4.0'
+PriestEngine.specVersion  // '2.8.0'
 ```
 
 ---
@@ -380,5 +477,5 @@ PriestEngine.specVersion  // '2.4.0'
 ## Requirements
 
 - Node.js 18+
-- TypeScript 5+ (if using TypeScript)
+- TypeScript 7 is used to build the package
 - `better-sqlite3` is the only runtime dependency (required for `SQLiteSessionStore`; tree-shaken if unused in bundler setups)

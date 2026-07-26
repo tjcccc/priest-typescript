@@ -1,7 +1,8 @@
 import { JSONValue } from './JSONValue';
+import { ReasoningInfo } from './Reasoning';
 import { ToolCall } from './ToolTypes';
 
-export type FinishedReason = 'stop' | 'length' | 'tool_calls' | 'error' | 'unknown';
+export type FinishedReason = 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' | 'unknown';
 
 /** Execution metadata for a completed run. */
 export interface ExecutionInfo {
@@ -26,6 +27,11 @@ export interface UsageInfo {
    * cache-read rate. Undefined when the provider does not report it.
    */
   cachedInputTokens?: number;
+  /**
+   * Provider-reported reasoning tokens. This is a subset of outputTokens and
+   * is not added again when totalTokens is calculated.
+   */
+  reasoningTokens?: number;
   estimatedCostUSD?: number;
 }
 
@@ -59,6 +65,8 @@ export interface PriestResponse {
    * appended to PriestRequest.toolExchange.
    */
   toolCalls?: ToolCall[];
+  /** Safe provider summary and request-local opaque tool-continuation state. */
+  reasoning?: ReasoningInfo;
   execution: ExecutionInfo;
   /** Token usage. Undefined if the provider did not report usage data. */
   usage?: UsageInfo;

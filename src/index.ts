@@ -1,6 +1,12 @@
 // Schema
 export type { JSONValue } from './schema/JSONValue';
 export type { PriestConfig } from './schema/PriestConfig';
+export type {
+  ReasoningConfig,
+  ReasoningEffort,
+  ReasoningInfo,
+  OpaqueReasoningState,
+} from './schema/Reasoning';
 export type { OutputSpec, ProviderFormat, PromptFormat } from './schema/OutputSpec';
 export type { SessionRef } from './schema/SessionRef';
 export type { PriestRequest } from './schema/PriestRequest';
@@ -46,6 +52,8 @@ export type { AdapterResult } from './providers/AdapterResult';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAICompatProvider } from './providers/OpenAICompatProvider';
 export type { OpenAICompatProviderOptions } from './providers/OpenAICompatProvider';
+export { OpenAIResponsesProvider } from './providers/OpenAIResponsesProvider';
+export type { OpenAIResponsesProviderOptions } from './providers/OpenAIResponsesProvider';
 export { AnthropicProvider } from './providers/AnthropicProvider';
 
 // Engine

@@ -1,4 +1,5 @@
 import { JSONValue } from './JSONValue';
+import { ReasoningInfo } from './Reasoning';
 
 /**
  * A tool the model may call. The SDK transports tool definitions and calls;
@@ -38,5 +39,5 @@ export interface ToolCall {
  * only the original user prompt and the final assistant text are stored.
  */
 export type ToolExchangeTurn =
-  | { kind: 'assistant'; text?: string; toolCalls: ToolCall[] }
+  | { kind: 'assistant'; text?: string; toolCalls: ToolCall[]; reasoning?: ReasoningInfo }
   | { kind: 'tool_result'; toolCallId: string; name: string; content: string; isError?: boolean };

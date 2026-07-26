@@ -4,6 +4,7 @@ import { ProfileLoader } from '../profile/ProfileLoader';
 import { AdapterCallOptions, AdapterStreamEvent, Message, ProviderAdapter } from '../providers/ProviderAdapter';
 import { PriestErrorModel, PriestResponse, UsageInfo } from '../schema/PriestResponse';
 import { PriestRequest } from '../schema/PriestRequest';
+import { ReasoningInfo } from '../schema/Reasoning';
 import { ToolCall } from '../schema/ToolTypes';
 import { SessionStore } from '../session/SessionStore';
 import { Session } from '../session/SessionModel';
@@ -25,7 +26,7 @@ import { PriestStreamEvent, RunOptions } from './StreamEvents';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '2.6.0';
+  static readonly specVersion = '2.8.0';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
@@ -55,6 +56,8 @@ export class PriestEngine {
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     let cachedInputTokens: number | undefined;
+    let reasoningTokens: number | undefined;
+    let reasoning: ReasoningInfo | undefined;
     let errorModel: PriestErrorModel | undefined;
 
     try {
@@ -65,6 +68,8 @@ export class PriestEngine {
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
       cachedInputTokens = result.cachedInputTokens;
+      reasoningTokens = result.reasoningTokens;
+      reasoning = result.reasoning;
     } catch (err) {
       finishReason = 'error';
       errorModel = toErrorModel(err);
@@ -86,11 +91,12 @@ export class PriestEngine {
     }
 
     const latencyMs = Date.now() - startMs;
-    const usage = buildUsage(inputTokens, outputTokens, cachedInputTokens);
+    const usage = buildUsage(inputTokens, outputTokens, cachedInputTokens, reasoningTokens);
 
     return {
       text,
       toolCalls,
+      reasoning,
       execution: {
         provider: request.config.provider,
         model: request.config.model,
@@ -144,11 +150,14 @@ export class PriestEngine {
     const callOptions = this.callOptions(request, options);
 
     const textParts: string[] = [];
+    const reasoningSummaryParts: string[] = [];
     const toolCalls: ToolCall[] = [];
     let finishReason: string | undefined;
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     let cachedInputTokens: number | undefined;
+    let reasoningTokens: number | undefined;
+    let reasoning: ReasoningInfo | undefined;
     let errorModel: PriestErrorModel | undefined;
 
     try {
@@ -160,6 +169,10 @@ export class PriestEngine {
         switch (event.type) {
           case 'text_delta':
             textParts.push(event.text);
+            yield event;
+            break;
+          case 'reasoning_summary_delta':
+            reasoningSummaryParts.push(event.text);
             yield event;
             break;
           case 'tool_call_start':
@@ -174,10 +187,15 @@ export class PriestEngine {
             inputTokens = event.inputTokens ?? inputTokens;
             outputTokens = event.outputTokens ?? outputTokens;
             cachedInputTokens = event.cachedInputTokens ?? cachedInputTokens;
-            yield { type: 'usage', usage: buildUsage(inputTokens, outputTokens, cachedInputTokens) as UsageInfo };
+            reasoningTokens = event.reasoningTokens ?? reasoningTokens;
+            yield {
+              type: 'usage',
+              usage: buildUsage(inputTokens, outputTokens, cachedInputTokens, reasoningTokens) as UsageInfo,
+            };
             break;
           case 'finish':
             finishReason = event.finishReason ?? finishReason;
+            reasoning = event.reasoning ?? reasoning;
             break;
         }
       }
@@ -189,6 +207,10 @@ export class PriestEngine {
     const text = textParts.length > 0 ? textParts.join('') : undefined;
     const hasToolCalls = toolCalls.length > 0;
     if (hasToolCalls && finishReason !== 'error') finishReason = 'tool_calls';
+    const streamedSummary = reasoningSummaryParts.length > 0 ? reasoningSummaryParts.join('') : undefined;
+    if (streamedSummary && !reasoning?.summary) {
+      reasoning = { ...reasoning, summary: streamedSummary };
+    }
 
     let sessionInfo = undefined;
     if (session && this.sessionStore && !errorModel) {
@@ -204,6 +226,7 @@ export class PriestEngine {
     const response: PriestResponse = {
       text,
       toolCalls: hasToolCalls ? toolCalls : undefined,
+      reasoning,
       execution: {
         provider: request.config.provider,
         model: request.config.model,
@@ -211,7 +234,7 @@ export class PriestEngine {
         profile,
         finishedReason: (finishReason as PriestResponse['execution']['finishedReason']) ?? undefined,
       },
-      usage: buildUsage(inputTokens, outputTokens, cachedInputTokens),
+      usage: buildUsage(inputTokens, outputTokens, cachedInputTokens, reasoningTokens),
       session: sessionInfo,
       error: errorModel,
       metadata: request.metadata ?? {},
@@ -337,13 +360,19 @@ export class PriestEngine {
   }
 }
 
-function buildUsage(inputTokens?: number, outputTokens?: number, cachedInputTokens?: number): UsageInfo | undefined {
+function buildUsage(
+  inputTokens?: number,
+  outputTokens?: number,
+  cachedInputTokens?: number,
+  reasoningTokens?: number,
+): UsageInfo | undefined {
   if (inputTokens === undefined && outputTokens === undefined) return undefined;
   return {
     inputTokens,
     outputTokens,
     totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0) || undefined,
     cachedInputTokens,
+    reasoningTokens,
     estimatedCostUSD: undefined,
   };
 }

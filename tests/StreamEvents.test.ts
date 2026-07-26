@@ -53,6 +53,42 @@ describe('PriestEngine.streamEvents', () => {
     expect(done.response.usage).toMatchObject({ inputTokens: 12, outputTokens: 7, totalTokens: 19 });
   });
 
+  it('passes through safe reasoning summaries and includes reasoning usage/state in done', async () => {
+    const reasoning = {
+      summary: 'Checked the options.',
+      continuation: [{
+        format: 'test.opaque.v1',
+        value: { token: 'opaque' },
+      }],
+    };
+    const adapter = new EventScriptedAdapter([
+      { type: 'reasoning_summary_delta', text: 'Checked the options.' },
+      { type: 'tool_call_start', index: 0, id: 'call_0', name: 'read_file' },
+      { type: 'tool_call_end', index: 0, toolCall: call },
+      { type: 'usage', inputTokens: 20, outputTokens: 10, reasoningTokens: 6 },
+      { type: 'finish', finishReason: 'tool_calls', reasoning },
+    ]);
+    const engine = new PriestEngine(new StaticProfileLoader(), undefined, { mock: adapter });
+    const events = await collect(engine.streamEvents({
+      config,
+      prompt: 'Read a.txt',
+      tools: [{ name: 'read_file' }],
+    }));
+
+    expect(events[0]).toEqual({
+      type: 'reasoning_summary_delta',
+      text: 'Checked the options.',
+    });
+    const done = events[events.length - 1] as Extract<PriestStreamEvent, { type: 'done' }>;
+    expect(done.response.reasoning).toEqual(reasoning);
+    expect(done.response.usage).toMatchObject({
+      inputTokens: 20,
+      outputTokens: 10,
+      reasoningTokens: 6,
+      totalTokens: 30,
+    });
+  });
+
   it('does not persist the session when the stream ends in tool calls', async () => {
     const adapter = new EventScriptedAdapter([
       { type: 'tool_call_start', index: 0, id: 'call_0', name: 'read_file' },

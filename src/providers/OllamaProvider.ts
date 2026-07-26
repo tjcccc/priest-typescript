@@ -165,6 +165,7 @@ export class OllamaProvider implements ProviderAdapter {
       model: config.model,
       messages: toOllamaMessages(messages),
       stream,
+      ...toOllamaReasoningConfig(config),
       ...(config.providerOptions ?? {}),
     };
     if (outputSpec?.jsonSchema != null) {
@@ -250,6 +251,22 @@ function mapDoneReason(reason: string | undefined): string {
   if (reason == null) return 'stop';
   const mapping: Record<string, string> = { stop: 'stop', length: 'length', load: 'stop' };
   return mapping[reason] ?? 'unknown';
+}
+
+function toOllamaReasoningConfig(config: PriestConfig): Record<string, unknown> {
+  const requested = config.reasoning;
+  if (!requested) return {};
+  if (requested.enabled === false || requested.effort === 'none') return { think: false };
+  if (requested.effort === 'minimal' || requested.effort === 'xhigh') {
+    throw new PriestError(
+      'REQUEST_INVALID',
+      `Ollama does not define the reasoning effort '${requested.effort}'`,
+      { provider: 'ollama', effort: requested.effort },
+    );
+  }
+  if (requested.effort) return { think: requested.effort };
+  if (requested.enabled === true) return { think: true };
+  return {};
 }
 
 /** Parse Ollama wire tool calls, synthesizing ids 'call_N' in response order. */

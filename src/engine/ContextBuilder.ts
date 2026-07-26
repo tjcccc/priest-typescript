@@ -176,7 +176,12 @@ export function buildMessages(opts: {
   // never persisted in sessions.
   for (const turn of toolExchange) {
     if (turn.kind === 'assistant') {
-      messages.push({ role: 'assistant', content: turn.text ?? '', toolCalls: turn.toolCalls });
+      messages.push({
+        role: 'assistant',
+        content: turn.text ?? '',
+        toolCalls: turn.toolCalls,
+        ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
+      });
     } else {
       messages.push({ role: 'tool', content: turn.content, toolCallId: turn.toolCallId, name: turn.name });
     }

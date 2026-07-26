@@ -350,3 +350,166 @@ describe('cached input tokens (prompt-cache visibility)', () => {
     expect(usage).toMatchObject({ inputTokens: 1200, outputTokens: 40, cachedInputTokens: 1024 });
   });
 });
+
+describe('provider-neutral reasoning mappings', () => {
+  it('Anthropic parses summarized thinking, preserves signed tool continuation, and reports thinking usage', async () => {
+    const fn = mockFetch(jsonResponse({
+      content: [
+        { type: 'thinking', thinking: 'I should read the file.', signature: 'opaque-signature' },
+        { type: 'tool_use', id: 'tu_1', name: 'read_file', input: { path: 'a.txt' } },
+      ],
+      stop_reason: 'tool_use',
+      usage: {
+        input_tokens: 20,
+        output_tokens: 12,
+        output_tokens_details: { thinking_tokens: 8 },
+      },
+    }));
+    const result = await new AnthropicProvider('key').complete(
+      [{ role: 'user', content: 'Read it.' }],
+      {
+        ...config,
+        reasoning: { enabled: true, effort: 'high', summary: 'auto' },
+      },
+      undefined,
+      { tools },
+    );
+
+    expect(sentBody(fn)).toMatchObject({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      output_config: { effort: 'high' },
+    });
+    expect(result.reasoningTokens).toBe(8);
+    expect(result.reasoning).toEqual({
+      summary: 'I should read the file.',
+      continuation: [{
+        format: 'anthropic.messages.thinking.v1',
+        value: {
+          type: 'thinking',
+          thinking: 'I should read the file.',
+          signature: 'opaque-signature',
+        },
+      }],
+    });
+  });
+
+  it('Anthropic replays a signed thinking block before tool_use and lets providerOptions override config', async () => {
+    const fn = mockFetch(jsonResponse({
+      content: [{ type: 'text', text: 'done' }],
+      stop_reason: 'end_turn',
+    }));
+    await new AnthropicProvider('key').complete([{
+      role: 'assistant',
+      content: '',
+      reasoning: {
+        continuation: [{
+          format: 'anthropic.messages.thinking.v1',
+          value: {
+            type: 'thinking',
+            thinking: 'summary',
+            signature: 'opaque-signature',
+          },
+        }],
+      },
+      toolCalls: [{ id: 'tu_1', name: 'read_file', arguments: { path: 'a.txt' } }],
+    }], {
+      ...config,
+      reasoning: { enabled: true, summary: 'auto' },
+      providerOptions: { thinking: { type: 'disabled' } },
+    });
+
+    const body = sentBody(fn);
+    expect(body.thinking).toEqual({ type: 'disabled' });
+    expect((body.messages as Array<Record<string, unknown>>)[0]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'summary', signature: 'opaque-signature' },
+        { type: 'tool_use', id: 'tu_1', name: 'read_file', input: { path: 'a.txt' } },
+      ],
+    });
+  });
+
+  it('Anthropic streams only summarized thinking and carries signatures on finish', async () => {
+    mockFetch(sseResponse([
+      'event: message_start',
+      'data: {"message":{"usage":{"input_tokens":20}}}',
+      'event: content_block_start',
+      'data: {"index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}',
+      'event: content_block_delta',
+      'data: {"index":0,"delta":{"type":"thinking_delta","thinking":"Checking."}}',
+      'event: content_block_delta',
+      'data: {"index":0,"delta":{"type":"signature_delta","signature":"opaque-signature"}}',
+      'event: content_block_stop',
+      'data: {"index":0}',
+      'event: content_block_start',
+      'data: {"index":1,"content_block":{"type":"tool_use","id":"tu_1","name":"read_file"}}',
+      'event: content_block_delta',
+      'data: {"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":\\"a.txt\\"}"}}',
+      'event: content_block_stop',
+      'data: {"index":1}',
+      'event: message_delta',
+      'data: {"delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":12,"output_tokens_details":{"thinking_tokens":8}}}',
+    ]));
+    const events = await collectEvents(new AnthropicProvider('key').streamEvents(
+      [{ role: 'user', content: 'Read it.' }],
+      { ...config, reasoning: { enabled: true, summary: 'auto' } },
+      undefined,
+      { tools },
+    ));
+
+    expect(events.find(item => item.type === 'reasoning_summary_delta')).toEqual({
+      type: 'reasoning_summary_delta',
+      text: 'Checking.',
+    });
+    expect(events.find(item => item.type === 'usage')).toMatchObject({ reasoningTokens: 8 });
+    expect(events[events.length - 1]).toMatchObject({
+      type: 'finish',
+      reasoning: {
+        summary: 'Checking.',
+        continuation: [{
+          format: 'anthropic.messages.thinking.v1',
+          value: {
+            type: 'thinking',
+            thinking: 'Checking.',
+            signature: 'opaque-signature',
+          },
+        }],
+      },
+    });
+  });
+
+  it('Ollama maps supported reasoning effort but never exposes its raw trace', async () => {
+    const fn = mockFetch(jsonResponse({
+      message: { thinking: 'raw private trace', content: 'final answer' },
+      done: true,
+      done_reason: 'stop',
+    }));
+    const result = await new OllamaProvider().complete(
+      [{ role: 'user', content: 'Think.' }],
+      { ...config, reasoning: { enabled: true, effort: 'high', summary: 'auto' } },
+    );
+
+    expect(sentBody(fn).think).toBe('high');
+    expect(result.text).toBe('final answer');
+    expect(result.reasoning).toBeUndefined();
+  });
+
+  it('Ollama providerOptions override neutral reasoning and unsupported levels are rejected', async () => {
+    const fn = mockFetch(jsonResponse({ message: { content: 'ok' }, done: true }));
+    const provider = new OllamaProvider();
+    await provider.complete(
+      [{ role: 'user', content: 'Think.' }],
+      {
+        ...config,
+        reasoning: { enabled: true, effort: 'high' },
+        providerOptions: { think: false },
+      },
+    );
+    expect(sentBody(fn).think).toBe(false);
+
+    await expect(provider.complete(
+      [{ role: 'user', content: 'Think.' }],
+      { ...config, reasoning: { effort: 'xhigh' } },
+    )).rejects.toMatchObject({ code: 'REQUEST_INVALID' });
+  });
+});

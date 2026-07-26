@@ -9,6 +9,7 @@ import { ToolCall } from '../schema/ToolTypes';
  */
 export type PriestStreamEvent =
   | { type: 'text_delta'; text: string }
+  | { type: 'reasoning_summary_delta'; text: string }
   | { type: 'tool_call_start'; index: number; id?: string; name?: string }
   | { type: 'tool_call_delta'; index: number; argumentsDelta: string }
   | { type: 'tool_call_end'; index: number; toolCall: ToolCall }

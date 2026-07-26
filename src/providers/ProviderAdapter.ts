@@ -1,5 +1,6 @@
 import { OutputSpec } from '../schema/OutputSpec';
 import { PriestConfig } from '../schema/PriestConfig';
+import { ReasoningInfo } from '../schema/Reasoning';
 import { ToolCall, ToolChoice, ToolDefinition } from '../schema/ToolTypes';
 import { AdapterResult } from './AdapterResult';
 
@@ -22,6 +23,8 @@ export interface Message {
   toolCallId?: string;
   /** Tool name. Tool role only. */
   name?: string;
+  /** Safe reasoning summary and opaque state for an assistant tool-call turn. */
+  reasoning?: ReasoningInfo;
 }
 
 /** Per-call options threaded from the engine into adapters. */
@@ -39,11 +42,18 @@ export interface AdapterCallOptions {
  */
 export type AdapterStreamEvent =
   | { type: 'text_delta'; text: string }
+  | { type: 'reasoning_summary_delta'; text: string }
   | { type: 'tool_call_start'; index: number; id?: string; name?: string }
   | { type: 'tool_call_delta'; index: number; argumentsDelta: string }
   | { type: 'tool_call_end'; index: number; toolCall: ToolCall }
-  | { type: 'usage'; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }
-  | { type: 'finish'; finishReason?: string };
+  | {
+    type: 'usage';
+    inputTokens?: number;
+    outputTokens?: number;
+    cachedInputTokens?: number;
+    reasoningTokens?: number;
+  }
+  | { type: 'finish'; finishReason?: string; reasoning?: ReasoningInfo };
 
 /** Interface that all provider adapters must implement. */
 export interface ProviderAdapter {

@@ -2,6 +2,7 @@ import { PriestError } from '../errors/PriestError';
 import { OutputSpec } from '../schema/OutputSpec';
 import { PriestConfig } from '../schema/PriestConfig';
 import { JSONValue } from '../schema/JSONValue';
+import { OpaqueReasoningState, ReasoningInfo } from '../schema/Reasoning';
 import { ToolCall, ToolChoice } from '../schema/ToolTypes';
 import { createLinkedAbort, LinkedAbort } from '../util/Abort';
 import { parseToolArguments } from '../util/ToolArgs';
@@ -12,10 +13,14 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 // Spec-defined default (behavior/providers.md): Anthropic requires max_tokens.
 const DEFAULT_MAX_TOKENS = 8096;
+const ANTHROPIC_REASONING_FORMAT = 'anthropic.messages.thinking.v1';
 
 interface AnthropicContentBlockWire {
+  [key: string]: unknown;
   type: string;
   text?: string;
+  thinking?: string;
+  signature?: string;
   id?: string;
   name?: string;
   input?: Record<string, JSONValue>;
@@ -51,13 +56,19 @@ export class AnthropicProvider implements ProviderAdapter {
       const data = await response.json() as {
         content: AnthropicContentBlockWire[];
         stop_reason?: string;
-        usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number };
+        usage?: {
+          input_tokens: number;
+          output_tokens: number;
+          cache_read_input_tokens?: number;
+          output_tokens_details?: { thinking_tokens?: number };
+        };
       };
 
       const text = data.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('');
       const toolCalls: ToolCall[] = data.content
         .filter(b => b.type === 'tool_use' && b.name)
         .map((b, i) => ({ id: b.id ?? `call_${i}`, name: b.name!, arguments: b.input ?? {} }));
+      const reasoning = parseAnthropicReasoning(data.content, toolCalls.length > 0);
 
       return {
         text,
@@ -65,7 +76,9 @@ export class AnthropicProvider implements ProviderAdapter {
         inputTokens: data.usage?.input_tokens,
         outputTokens: data.usage?.output_tokens,
         cachedInputTokens: data.usage?.cache_read_input_tokens,
+        reasoningTokens: data.usage?.output_tokens_details?.thinking_tokens,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        reasoning,
       };
     } catch (err: unknown) {
       throw this.mapError(err, link, config);
@@ -133,6 +146,8 @@ export class AnthropicProvider implements ProviderAdapter {
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     let cachedInputTokens: number | undefined;
+    let reasoningTokens: number | undefined;
+    const thinkingBlocks = new Map<number, AnthropicContentBlockWire>();
 
     try {
       while (true) {
@@ -151,9 +166,20 @@ export class AnthropicProvider implements ProviderAdapter {
           let parsed: {
             index?: number;
             content_block?: AnthropicContentBlockWire;
-            delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
+            delta?: {
+              type?: string;
+              text?: string;
+              thinking?: string;
+              signature?: string;
+              partial_json?: string;
+              stop_reason?: string;
+            };
             message?: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } };
-            usage?: { input_tokens?: number; output_tokens?: number };
+            usage?: {
+              input_tokens?: number;
+              output_tokens?: number;
+              output_tokens_details?: { thinking_tokens?: number };
+            };
           };
           try {
             parsed = JSON.parse(trimmed.slice(6)) as typeof parsed;
@@ -172,12 +198,33 @@ export class AnthropicProvider implements ProviderAdapter {
                 const toolIndex = toolCount++;
                 toolBlocks.set(parsed.index, { toolIndex, id: block.id, name: block.name, json: '' });
                 yield { type: 'tool_call_start', index: toolIndex, id: block.id, name: block.name };
+              } else if (
+                block
+                && parsed.index !== undefined
+                && (block.type === 'thinking' || block.type === 'redacted_thinking')
+              ) {
+                thinkingBlocks.set(parsed.index, { ...block });
               }
               break;
             }
             case 'content_block_delta': {
               if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
                 yield { type: 'text_delta', text: parsed.delta.text };
+              } else if (
+                parsed.delta?.type === 'thinking_delta'
+                && parsed.delta.thinking
+                && parsed.index !== undefined
+              ) {
+                const block = thinkingBlocks.get(parsed.index);
+                if (block) block.thinking = (block.thinking ?? '') + parsed.delta.thinking;
+                yield { type: 'reasoning_summary_delta', text: parsed.delta.thinking };
+              } else if (
+                parsed.delta?.type === 'signature_delta'
+                && parsed.delta.signature
+                && parsed.index !== undefined
+              ) {
+                const block = thinkingBlocks.get(parsed.index);
+                if (block) block.signature = (block.signature ?? '') + parsed.delta.signature;
               } else if (parsed.delta?.type === 'input_json_delta' && parsed.index !== undefined) {
                 const state = toolBlocks.get(parsed.index);
                 const fragment = parsed.delta.partial_json ?? '';
@@ -208,15 +255,24 @@ export class AnthropicProvider implements ProviderAdapter {
             case 'message_delta':
               stopReason = parsed.delta?.stop_reason ?? stopReason;
               outputTokens = parsed.usage?.output_tokens ?? outputTokens;
+              reasoningTokens = parsed.usage?.output_tokens_details?.thinking_tokens ?? reasoningTokens;
               break;
           }
         }
       }
 
       if (inputTokens !== undefined || outputTokens !== undefined) {
-        yield { type: 'usage', inputTokens, outputTokens, cachedInputTokens };
+        yield { type: 'usage', inputTokens, outputTokens, cachedInputTokens, reasoningTokens };
       }
-      yield { type: 'finish', finishReason: mapStopReason(stopReason, toolCount > 0) };
+      const reasoning = parseAnthropicReasoning(
+        [...thinkingBlocks.entries()].sort(([a], [b]) => a - b).map(([, block]) => block),
+        toolCount > 0,
+      );
+      yield {
+        type: 'finish',
+        finishReason: mapStopReason(stopReason, toolCount > 0),
+        reasoning,
+      };
     } catch (err: unknown) {
       throw this.mapError(err, link, config);
     } finally {
@@ -246,6 +302,7 @@ export class AnthropicProvider implements ProviderAdapter {
       max_tokens: config.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
       messages: chatMessages,
       stream,
+      ...toAnthropicReasoningConfig(config),
       ...(config.providerOptions ?? {}),
     };
     if (systemText) body['system'] = systemText;
@@ -318,6 +375,16 @@ function splitMessages(messages: Message[]): { system: string; chatMessages: Arr
     flushToolResults();
     if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
       const blocks: Array<Record<string, unknown>> = [];
+      for (const state of m.reasoning?.continuation ?? []) {
+        if (
+          state.format === ANTHROPIC_REASONING_FORMAT
+          && state.value
+          && typeof state.value === 'object'
+          && !Array.isArray(state.value)
+        ) {
+          blocks.push(state.value);
+        }
+      }
       const text = blockText(m.content);
       if (text.length > 0) blocks.push({ type: 'text', text });
       for (const call of m.toolCalls) {
@@ -369,3 +436,52 @@ function mapStopReason(stopReason: string | undefined, hasToolCalls: boolean): s
   return mapping[stopReason] ?? 'unknown';
 }
 
+function parseAnthropicReasoning(
+  blocks: AnthropicContentBlockWire[],
+  includeContinuation: boolean,
+): ReasoningInfo | undefined {
+  const thinking = blocks.filter(
+    block => block.type === 'thinking' || block.type === 'redacted_thinking',
+  );
+  const summaries = thinking
+    .filter(block => block.type === 'thinking' && block.thinking)
+    .map(block => block.thinking as string);
+  const continuation: OpaqueReasoningState[] = includeContinuation
+    ? thinking.map(block => ({
+      format: ANTHROPIC_REASONING_FORMAT,
+      value: block as unknown as JSONValue,
+    }))
+    : [];
+
+  if (summaries.length === 0 && continuation.length === 0) return undefined;
+  return {
+    summary: summaries.length > 0 ? summaries.join('\n\n') : undefined,
+    continuation: continuation.length > 0 ? continuation : undefined,
+  };
+}
+
+function toAnthropicReasoningConfig(config: PriestConfig): Record<string, unknown> {
+  const requested = config.reasoning;
+  if (!requested) return {};
+
+  const result: Record<string, unknown> = {};
+  const disabled = requested.enabled === false || requested.effort === 'none';
+  const needsThinking = requested.enabled === true
+    || requested.effort !== undefined
+    || requested.summary !== undefined;
+
+  if (disabled) {
+    result['thinking'] = { type: 'disabled' };
+  } else if (needsThinking) {
+    result['thinking'] = {
+      type: 'adaptive',
+      ...(requested.summary === 'auto' ? { display: 'summarized' } : {}),
+      ...(requested.summary === 'none' ? { display: 'omitted' } : {}),
+    };
+  }
+
+  if (requested.effort && requested.effort !== 'none') {
+    result['output_config'] = { effort: requested.effort };
+  }
+  return result;
+}

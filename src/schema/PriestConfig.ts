@@ -1,4 +1,5 @@
 import { JSONValue } from './JSONValue';
+import { ReasoningConfig } from './Reasoning';
 
 /** Provider and model configuration for a single priest run. */
 export interface PriestConfig {
@@ -31,6 +32,8 @@ export interface PriestConfig {
    * of `maxContextTokens`, which remains a budget-triggered safety net.
    */
   sessionContextTurns?: number;
+  /** Provider-neutral reasoning request. Omission preserves provider/model defaults. */
+  reasoning?: ReasoningConfig;
   /**
    * Provider-specific options merged directly into the request payload.
    * Examples: { think: false } for Ollama/Qwen3, { temperature: 0.7 }.

@@ -44,6 +44,35 @@ describe('runWithTools', () => {
     expect(secondMessages.some(m => m.role === 'tool')).toBe(true);
   });
 
+  it('copies opaque reasoning into the assistant exchange for the next tool iteration', async () => {
+    const reasoning = {
+      summary: 'Need the file.',
+      continuation: [{
+        format: 'test.opaque.v1',
+        value: { token: 'unchanged' },
+      }],
+    };
+    const adapter = new ScriptedAdapter([
+      { text: '', finishReason: 'tool_calls', toolCalls: [call], reasoning },
+      { text: 'Done.', finishReason: 'stop' },
+    ]);
+
+    const result = await runWithTools(
+      engineWith(adapter),
+      { config, prompt: 'Read a.txt', tools: [{ name: 'read_file' }] },
+      async () => ({ content: 'hello' }),
+    );
+
+    expect(result.exchange[0]).toEqual({
+      kind: 'assistant',
+      text: '',
+      toolCalls: [call],
+      reasoning,
+    });
+    const replayedAssistant = adapter.calls[1].messages.find(message => message.role === 'assistant');
+    expect(replayedAssistant?.reasoning).toEqual(reasoning);
+  });
+
   it('injects a denial result without executing when onToolCall rejects', async () => {
     const adapter = new ScriptedAdapter([
       { text: '', finishReason: 'tool_calls', toolCalls: [call] },

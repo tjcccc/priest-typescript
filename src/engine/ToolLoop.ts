@@ -58,7 +58,12 @@ export async function runWithTools(
       return { response, exchange, iterationLimitReached: false };
     }
 
-    exchange.push({ kind: 'assistant', text: response.text, toolCalls: response.toolCalls });
+    exchange.push({
+      kind: 'assistant',
+      text: response.text,
+      toolCalls: response.toolCalls,
+      ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+    });
     for (const call of response.toolCalls) {
       const decision = hooks?.onToolCall ? await hooks.onToolCall(call) : { approved: true };
       if (!decision.approved) {

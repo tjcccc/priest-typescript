@@ -1,3 +1,4 @@
+import { ReasoningInfo } from '../schema/Reasoning';
 import { ToolCall } from '../schema/ToolTypes';
 
 /** Result returned by a provider adapter after a complete (non-streaming) call. */
@@ -8,6 +9,10 @@ export interface AdapterResult {
   outputTokens?: number;
   /** Portion of inputTokens served from the provider's prompt cache, when reported. */
   cachedInputTokens?: number;
+  /** Provider-reported reasoning tokens, included in outputTokens. */
+  reasoningTokens?: number;
   /** Tool calls requested by the model. Undefined when none. */
   toolCalls?: ToolCall[];
+  /** Safe summary and request-local opaque tool-continuation state. */
+  reasoning?: ReasoningInfo;
 }

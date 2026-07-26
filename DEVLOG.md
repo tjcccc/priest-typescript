@@ -1,6 +1,19 @@
 # DEVLOG
 
-## 2026-07-26 — v2.7.1 — TypeScript 7 native compiler
+## 2026-07-26 — v2.8.0 — OpenAI Responses, safe reasoning transport, and release cleanup
+
+Protocol/spec and npm package release candidate. This version is intentionally being completed and exercised locally by Marifold before any npm publication or sibling-SDK propagation.
+
+- **First-class `OpenAIResponsesProvider`:** explicit Responses endpoint configuration; complete and semantic SSE streaming; text and image input; function tools and stateless tool-result continuation; JSON and JSON Schema output; cached/reasoning usage; caller cancellation, connect timeout, custom headers, and optional dispatcher; provider-native overrides without model-name endpoint guessing.
+- **Provider-neutral reasoning:** new `ReasoningConfig`, `ReasoningInfo`, `OpaqueReasoningState`, and `reasoning_summary_delta`. Only provider-supplied summaries are displayable. OpenAI encrypted reasoning items and Anthropic signed thinking blocks are replayed unchanged inside the current tool loop; no reasoning state is persisted in sessions. Ollama's raw reasoning trace is deliberately not surfaced.
+- **Usage and finish reasons:** `reasoningTokens` is reported as a subset of `outputTokens`; `content_filter` is now represented in the public `FinishedReason` union.
+- **Tool loop:** `runWithTools` carries reasoning continuation into the next assistant exchange automatically.
+- **Canonical spec:** added the v2.8 behavior documents, repaired stale 2.2–2.6 JSON schemas, and added language-neutral conformance fixtures for context, provider requests/responses, streaming, tools, images, usage, compaction, finish/errors, and reasoning.
+- **Release cleanup:** `PriestEngine.specVersion` and package version are 2.8.0; all current README spec references were corrected; cached input tokens, conversation compaction, session context windows, Responses, and reasoning are now documented.
+- **Compatibility:** `OpenAICompatProvider` wire behavior is unchanged. Existing provider adapters remain valid because new fields are optional; exhaustive event-union switches may need a `reasoning_summary_delta` case.
+- **Verification:** `pnpm typecheck`, `pnpm build`, `pnpm test` (132 tests), and `pnpm pack --dry-run`, including declaration/package-content inspection.
+
+## 2026-07-26 — npm v2.7.1 — TypeScript 7 native compiler
 
 TypeScript SDK tooling only; no public API or spec/protocol change (`specVersion` stays `2.6.0`), so other-SDK (Python/Rust/.NET/Swift) sync is not required.
 
@@ -8,7 +21,7 @@ TypeScript SDK tooling only; no public API or spec/protocol change (`specVersion
 - Replaced the removed legacy Node module-resolution mode with `NodeNext`. Because this package remains untyped CommonJS, emitted JavaScript and package consumption stay backward compatible.
 - Verification: `pnpm build`, `pnpm typecheck`, and `pnpm test`.
 
-## 2026-07-10 — v2.7.0 — OpenAI-compat proxy dispatcher
+## 2026-07-10 — npm v2.7.0 — OpenAI-compat proxy dispatcher
 
 TypeScript SDK only; no spec/protocol change (`specVersion` stays `2.6.0`), so other-SDK (Python/Rust/.NET/Swift) sync is not required.
 
@@ -20,12 +33,16 @@ TypeScript SDK only; no spec/protocol change (`specVersion` stays `2.6.0`), so o
 
 TypeScript SDK only; other-SDK (Python/Rust/.NET/Swift) sync intentionally deferred.
 
+Synchronization status update (2026-07-26): this was the at-release status. Python, .NET, Rust, and Swift subsequently synchronized through protocol 2.6.1.
+
 - **`OpenAICompatProvider` now sets `stream_options: { include_usage: true }` on streaming requests.** Per the OpenAI-compatible streaming protocol, gateways emit a final usage chunk only when this option is set; without it, usage is reported solely for models that volunteer it. On DashScope (Alibaba Bailian) the Qwen models volunteered usage but third-party models (e.g. `deepseek-v4-flash`) did not, so streaming chat showed no token cost / context. The streaming parser already captured `parsed.usage`; this just asks for it. Non-streaming (`complete`) is unchanged (it reads `usage` from the single JSON response). `providerOptions` still overrides, so a backend that rejects the field can opt out.
 - Tests: ProviderWire wire-format checks that streaming sends `stream_options.include_usage` and non-streaming omits it, plus a `providerOptions` override case (109 total pass).
 
 ## 2026-06-25 — v2.6.0 — session turn window
 
 TypeScript SDK leads this spec version; other-SDK (Python/Rust/.NET/Swift) sync pending.
+
+Synchronization status update (2026-07-26): this was the at-release status. All four sibling SDKs subsequently synchronized through protocol 2.6.1.
 
 - **`PriestConfig.sessionContextTurns`:** a hard cap on how many recent session turns are replayed into a request. When set, only the last N turns (after any compaction summary) reach the model; older turns stay on disk but are not sent. `0` replays none (summary only); unset replays all (default — fully backward compatible). Independent of `maxContextTokens`, which remains the budget-triggered compaction safety net.
 - **`ContextBuilder`:** the Step-5 replay now starts at `max(summarizedThrough, turns.length - N)` when a window is set — so a window never un-hides turns already folded into the summary, and the summary prefix is unchanged. An **odd-sized window snaps down to a user turn** (floored by `summarizedThrough`) so the replay never opens on an orphan assistant reply, which strict OpenAI-compatible backends (e.g. DashScope) reject. Deterministic and free (no extra summarization calls). Threaded through `buildMessages({ sessionContextTurns })` from `request.config.sessionContextTurns`.
@@ -38,6 +55,8 @@ TypeScript SDK leads this spec version; other-SDK (Python/Rust/.NET/Swift) sync 
 
 TypeScript SDK leads this spec version; spec doc + other-SDK (Python/Rust/.NET/Swift) sync pending until the TS surface stabilizes.
 
+Synchronization status update (2026-07-26): this was the at-release status. The canonical spec and all four sibling SDKs subsequently synchronized through protocol 2.6.1.
+
 - **Cached input tokens:** `UsageInfo.cachedInputTokens` and `AdapterResult.cachedInputTokens` / the `usage` stream event now carry the prompt-cache hit count. Parsed from OpenAI-compat `usage.prompt_tokens_details.cached_tokens` (DashScope/OpenAI) and Anthropic `cache_read_input_tokens` (complete + stream). Lets hosts see prefix-cache behavior instead of only gross input.
 - **Conversation compaction:** sessions can now be bounded instead of replaying full history forever (cost was linear per turn, quadratic per session). New `PriestConfig.maxContextTokens` (enables compaction; unset = off, fully backward compatible) and `compactionKeepTurns` (default 6). When a chat turn's reported input usage crosses ~80% of the budget, the engine folds older turns into a running summary via a provider summarization call and replays only `summary + recent tail`. Non-destructive: raw turns stay in the store, only the replayed view shrinks; the summary lives in session metadata (`__compaction`) so the SQLite schema and cross-SDK interop are unchanged.
 - **Recursive + safe:** repeated compaction folds only newly-aged turns into the existing summary. The summary prompt is told durable facts already live in memory (avoids double-paying the memory extractor). Trigger is measured on plain chat turns only — agent/tool turns are skipped (their input reflects intra-run tool context, not the clean session; that growth is host-side).
@@ -49,6 +68,8 @@ TypeScript SDK leads this spec version; spec doc + other-SDK (Python/Rust/.NET/S
 ## 2026-06-12 — v2.4.0 — tool calling, structured streaming, cancellation, images
 
 Spec 2.4.0 implementation (reference implementation for this spec version; Python sync pending).
+
+Synchronization status update (2026-07-26): this was the at-release status. Python, .NET, Rust, and Swift subsequently synchronized through protocol 2.6.1.
 
 - **Tool calling (caller executes):** `PriestRequest.tools` / `toolChoice` / `toolExchange`, `PriestResponse.toolCalls`, `finishedReason: 'tool_calls'`. Wire mappings for all three providers (OpenAI tools/tool_calls, Anthropic tool_use/tool_result with user-message merging, Ollama tools with synthesized `call_N` ids and `tool_name` results). Tool exchange turns are never persisted in sessions — schema interop with pre-2.4 SDKs preserved.
 - **`runWithTools()` loop helper:** generic call → execute → re-call loop with caller executor, optional `onToolCall` approval hook, iteration cap, and exchange trace.
