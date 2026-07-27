@@ -1,8 +1,8 @@
 /**
  * Combine an optional caller signal with a timeout into one AbortController.
  *
- * Implemented without AbortSignal.any, which requires Node >= 20.3 while this
- * package supports Node 18+.
+ * Implemented without AbortSignal.any so timeout attribution and listener
+ * cleanup remain explicit.
  *
  * clearTimer() stops the timeout while keeping the caller signal wired — use
  * it once response headers arrive so long streams aren't killed by the

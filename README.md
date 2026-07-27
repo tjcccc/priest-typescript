@@ -2,7 +2,7 @@
 
 TypeScript SDK for the [priest](https://github.com/tjcccc/priest) AI orchestration protocol.
 
-Node.js 18+ · Native TypeScript 7 · One dependency (`better-sqlite3` for SQLite sessions)
+Node.js 22 or 24 LTS · Native TypeScript 7 · One dependency (`better-sqlite3` for SQLite sessions)
 
 ---
 
@@ -476,6 +476,6 @@ PriestEngine.specVersion  // '2.8.0'
 
 ## Requirements
 
-- Node.js 18+
+- Maintained Node.js 22 or 24 LTS releases
 - TypeScript 7 is used to build the package
-- `better-sqlite3` is the only runtime dependency (required for `SQLiteSessionStore`; tree-shaken if unused in bundler setups)
+- `better-sqlite3` 13 is the only runtime dependency (required for `SQLiteSessionStore`; tree-shaken if unused in bundler setups)

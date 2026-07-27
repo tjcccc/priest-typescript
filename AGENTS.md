@@ -6,7 +6,7 @@
 
 ## Stack
 
-- TypeScript (strict), Node.js >= 18, compiled with `tsc` to `dist/`
+- TypeScript (strict), maintained Node.js 22 and 24 LTS releases, compiled with `tsc` to `dist/`
 - pnpm
 - vitest
 - better-sqlite3 (session store)

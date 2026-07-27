@@ -1,5 +1,16 @@
 # DEVLOG
 
+## 2026-07-27 — npm v3.0.0 — SQLite 13 and maintained Node LTS baseline
+
+TypeScript SDK packaging/runtime change only; the public API, SQLite schema, timestamp representation, and protocol behavior are unchanged, so the protocol spec and sibling SDK implementations do not require synchronization.
+
+- **Shared native SQLite major:** upgraded the sole runtime dependency from `better-sqlite3` 11 to `^13.0.1`, allowing file-linked consumers such as Marifold to use one v13 native SQLite implementation in-process instead of loading v11 and v13 against the same session database.
+- **Runtime policy:** Node.js 22 and 24 LTS are supported through the engine range `^22.0.0 || ^24.0.0`; Node 18 and 20 are no longer supported. The project compiles against `@types/node` `^22.20.1`, matching the lowest supported runtime rather than adopting non-target Node 26 types.
+- **Development dependencies:** refreshed `@types/better-sqlite3` to `^7.6.13`, retained TypeScript `^7.0.2`, upgraded Vitest to `^4.1.10`, and pinned Corepack to pnpm 11.17.0 with its integrity hash.
+- **Database compatibility:** a database created through the public `SQLiteSessionStore` on better-sqlite3 11.10.0 contained three sessions and twelve ordered turns and passed `PRAGMA integrity_check`; after the dependency upgrade it was read, appended, closed, reopened, and checked again without schema migration or data loss.
+- **Release implication:** dropping Node 18/20 is a breaking runtime compatibility change, so the npm package advances to 3.0.0 while `PriestEngine.specVersion` remains 2.8.0.
+- **Verification:** `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`, and `pnpm test` (133 tests) pass on Node 24.18.0; `pnpm why better-sqlite3` reports exactly one installed version (13.0.1); `pnpm audit --prod` reports no known vulnerabilities; `pnpm outdated` reports only the intentionally excluded Node 26 type package. A packed tarball passed external consumer session round trips and SQLite integrity checks on Node 22.23.1 and Node 24.18.0.
+
 ## 2026-07-26 — v2.8.0 — OpenAI Responses, safe reasoning transport, and release cleanup
 
 Protocol/spec and npm package release candidate. This version is intentionally being completed and exercised locally by Marifold before any npm publication or sibling-SDK propagation.
