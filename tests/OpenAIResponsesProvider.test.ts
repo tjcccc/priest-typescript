@@ -154,6 +154,30 @@ describe('OpenAIResponsesProvider complete wire format', () => {
     expect(sentBody(fn).text).toEqual({ format: { type: 'json_object' } });
   });
 
+  it('replays assistant history as output_text rather than input_text', async () => {
+    const fn = mockFetch(jsonResponse({
+      status: 'completed',
+      output: [{
+        type: 'message',
+        content: [{ type: 'output_text', text: 'Second answer.' }],
+      }],
+    }));
+
+    await new OpenAIResponsesProvider('https://api.test').complete([
+      { role: 'system', content: 'Be concise.' },
+      { role: 'user', content: 'First question.' },
+      { role: 'assistant', content: [{ type: 'text', text: 'First answer.' }] },
+      { role: 'user', content: 'Second question.' },
+    ], config);
+
+    expect(sentBody(fn).input).toEqual([
+      { role: 'system', content: [{ type: 'input_text', text: 'Be concise.' }] },
+      { role: 'user', content: [{ type: 'input_text', text: 'First question.' }] },
+      { role: 'assistant', content: [{ type: 'output_text', text: 'First answer.' }] },
+      { role: 'user', content: [{ type: 'input_text', text: 'Second question.' }] },
+    ]);
+  });
+
   it('parses visible text, safe summaries, cache usage, and reasoning usage', async () => {
     mockFetch(jsonResponse({
       status: 'completed',

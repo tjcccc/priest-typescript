@@ -556,22 +556,27 @@ function toResponsesInput(messages: Message[]): unknown[] {
 
     input.push({
       role: message.role,
-      content: toResponsesContent(message.content),
+      content: toResponsesContent(message.content, message.role === 'assistant'),
     });
   }
 
   return input;
 }
 
-function toResponsesContent(content: Message['content']): Array<Record<string, unknown>> {
+function toResponsesContent(
+  content: Message['content'],
+  assistantOutput: boolean,
+): Array<Record<string, unknown>> {
   if (typeof content === 'string') {
-    return [{ type: 'input_text', text: content }];
+    return [{ type: assistantOutput ? 'output_text' : 'input_text', text: content }];
   }
-  return content.map(toResponsesContentBlock);
+  return content.map(block => toResponsesContentBlock(block, assistantOutput));
 }
 
-function toResponsesContentBlock(block: ContentBlock): Record<string, unknown> {
-  if (block.type === 'text') return { type: 'input_text', text: block.text };
+function toResponsesContentBlock(block: ContentBlock, assistantOutput: boolean): Record<string, unknown> {
+  if (block.type === 'text') {
+    return { type: assistantOutput ? 'output_text' : 'input_text', text: block.text };
+  }
   return { type: 'input_image', image_url: block.image_url.url };
 }
 

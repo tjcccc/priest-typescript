@@ -1,5 +1,16 @@
 # DEVLOG
 
+## 2026-08-22 — npm v3.0.1 — OpenAI Responses assistant-history replay
+
+- Fixed the Responses request serializer to encode prior assistant text as
+  `output_text` while retaining `input_text` for system and user messages.
+  Strict Responses backends rejected the old wire form on the second chat turn.
+- Updated the canonical protocol to v2.8.1 and synchronized Python, .NET,
+  Rust, and Swift.
+- Added a regression test covering a system/user/assistant/user replay.
+- Verification: `pnpm typecheck`, `pnpm build`, `pnpm test` (134 tests),
+  and `pnpm pack --dry-run` pass.
+
 ## 2026-07-27 — npm v3.0.0 — SQLite 13 and maintained Node LTS baseline
 
 TypeScript SDK packaging/runtime change only; the public API, SQLite schema, timestamp representation, and protocol behavior are unchanged, so the protocol spec and sibling SDK implementations do not require synchronization.

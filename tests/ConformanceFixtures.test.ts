@@ -15,7 +15,7 @@ function load(name: string): Record<string, unknown> {
 describe('v2.8 language-neutral conformance fixtures', () => {
   it('loads every category declared by the manifest', () => {
     const manifest = load('manifest.json');
-    expect(manifest.spec_version).toBe('2.8.0');
+    expect(manifest.spec_version).toBe('2.8.1');
     const files = manifest.files as Array<{ category: string; path: string }>;
     expect(files.map(file => file.category)).toEqual([
       'context_assembly',
@@ -31,7 +31,7 @@ describe('v2.8 language-neutral conformance fixtures', () => {
     ]);
     for (const file of files) {
       const fixture = load(file.path);
-      expect(fixture.spec_version).toBe('2.8.0');
+      expect(fixture.spec_version).toBe('2.8.1');
       expect(fixture.category).toBe(file.category);
       expect(Array.isArray(fixture.cases)).toBe(true);
     }

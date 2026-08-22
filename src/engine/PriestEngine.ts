@@ -26,7 +26,7 @@ import { PriestStreamEvent, RunOptions } from './StreamEvents';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '2.8.0';
+  static readonly specVersion = '2.8.1';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
