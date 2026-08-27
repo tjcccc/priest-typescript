@@ -3,7 +3,7 @@ import { JSONValue } from '../schema/JSONValue';
 import { OutputSpec } from '../schema/OutputSpec';
 import { PriestConfig } from '../schema/PriestConfig';
 import { OpaqueReasoningState, ReasoningInfo } from '../schema/Reasoning';
-import { ToolCall, ToolChoice } from '../schema/ToolTypes';
+import { ProviderToolDefinition, ToolCall, ToolChoice } from '../schema/ToolTypes';
 import { createLinkedAbort, LinkedAbort } from '../util/Abort';
 import { parseToolArguments } from '../util/ToolArgs';
 import { AdapterResult } from './AdapterResult';
@@ -76,6 +76,10 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
     private readonly apiKey?: string,
     private readonly options: OpenAIResponsesProviderOptions = {},
   ) {}
+
+  supportsProviderTool(tool: ProviderToolDefinition): boolean {
+    return tool.type === 'web_search';
+  }
 
   async complete(
     messages: Message[],
@@ -376,14 +380,18 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
       generated['text'] = { format: { type: 'json_object' } };
     }
 
-    if (options?.tools && options.tools.length > 0) {
-      generated['tools'] = options.tools.map(tool => ({
+    const providerTools = options?.providerTools?.map(tool => ({ type: tool.type })) ?? [];
+    const functionTools = options?.tools?.map(tool => ({
         type: 'function',
         name: tool.name,
         description: tool.description ?? '',
         parameters: tool.parameters ?? {},
-      }));
-      if (options.toolChoice !== undefined) {
+      })) ?? [];
+    if (providerTools.length > 0 || functionTools.length > 0) {
+      // Provider tools come first so hosted capabilities are preferred when a
+      // caller also supplies function-tool fallbacks or unrelated tools.
+      generated['tools'] = [...providerTools, ...functionTools];
+      if (options?.toolChoice !== undefined) {
         generated['tool_choice'] = mapToolChoice(options.toolChoice);
       }
     }

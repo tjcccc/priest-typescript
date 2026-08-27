@@ -13,6 +13,12 @@ export interface ToolDefinition {
 }
 
 /**
+ * A tool executed entirely by the model provider. Unlike ToolDefinition, it
+ * never produces a caller-executable ToolCall or a tool-exchange turn.
+ */
+export type ProviderToolDefinition = { type: 'web_search' };
+
+/**
  * Tool selection behavior.
  * 'auto' lets the model decide, 'none' disables calls, 'required' forces a call,
  * and { name } forces a specific tool.

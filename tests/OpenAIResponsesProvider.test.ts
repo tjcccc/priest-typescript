@@ -154,6 +154,31 @@ describe('OpenAIResponsesProvider complete wire format', () => {
     expect(sentBody(fn).text).toEqual({ format: { type: 'json_object' } });
   });
 
+  it('places provider-executed web search before caller-executed function tools', async () => {
+    const fn = mockFetch(jsonResponse({
+      status: 'completed',
+      output: [{ type: 'message', content: [{ type: 'output_text', text: 'Found it.' }] }],
+    }));
+    const provider = new OpenAIResponsesProvider('https://api.test');
+
+    await provider.complete(
+      [{ role: 'user', content: 'Find the latest information.' }],
+      config,
+      undefined,
+      { providerTools: [{ type: 'web_search' }], tools },
+    );
+
+    expect(sentBody(fn).tools).toEqual([
+      { type: 'web_search' },
+      {
+        type: 'function',
+        name: 'lookup',
+        description: 'Look up a record.',
+        parameters: tools[0].parameters,
+      },
+    ]);
+  });
+
   it('replays assistant history as output_text rather than input_text', async () => {
     const fn = mockFetch(jsonResponse({
       status: 'completed',

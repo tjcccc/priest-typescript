@@ -26,7 +26,7 @@ import { PriestStreamEvent, RunOptions } from './StreamEvents';
  */
 export class PriestEngine {
   /** Spec version this implementation targets. */
-  static readonly specVersion = '2.8.1';
+  static readonly specVersion = '2.9.0';
 
   constructor(
     private readonly profileLoader: ProfileLoader,
@@ -61,6 +61,7 @@ export class PriestEngine {
     let errorModel: PriestErrorModel | undefined;
 
     try {
+      this.assertProviderToolsSupported(adapter, request);
       const result = await adapter.complete(messages, request.config, request.output, this.callOptions(request, options));
       text = result.text;
       toolCalls = result.toolCalls && result.toolCalls.length > 0 ? result.toolCalls : undefined;
@@ -161,6 +162,7 @@ export class PriestEngine {
     let errorModel: PriestErrorModel | undefined;
 
     try {
+      this.assertProviderToolsSupported(adapter, request);
       const source: AsyncGenerator<AdapterStreamEvent, void, unknown> = adapter.streamEvents
         ? adapter.streamEvents(messages, request.config, request.output, callOptions)
         : wrapTextStream(adapter.stream(messages, request.config, request.output, callOptions));
@@ -330,12 +332,23 @@ export class PriestEngine {
   }
 
   private callOptions(request: PriestRequest, options?: RunOptions): AdapterCallOptions | undefined {
-    if (!options?.signal && !request.tools) return undefined;
+    if (!options?.signal && !request.tools && !request.providerTools) return undefined;
     return {
       signal: options?.signal,
       tools: request.tools,
+      providerTools: request.providerTools,
       toolChoice: request.toolChoice,
     };
+  }
+
+  private assertProviderToolsSupported(adapter: ProviderAdapter, request: PriestRequest): void {
+    for (const tool of request.providerTools ?? []) {
+      if (adapter.supportsProviderTool?.(tool, request.config)) continue;
+      throw PriestError.providerError(
+        request.config.provider,
+        `Provider tool '${tool.type}' is not supported for model '${request.config.model}'.`,
+      );
+    }
   }
 
   private async resolveSession(request: PriestRequest): Promise<[Session | null, boolean]> {

@@ -1,7 +1,7 @@
 import { OutputSpec } from '../schema/OutputSpec';
 import { PriestConfig } from '../schema/PriestConfig';
 import { ReasoningInfo } from '../schema/Reasoning';
-import { ToolCall, ToolChoice, ToolDefinition } from '../schema/ToolTypes';
+import { ProviderToolDefinition, ToolCall, ToolChoice, ToolDefinition } from '../schema/ToolTypes';
 import { AdapterResult } from './AdapterResult';
 
 /**
@@ -32,6 +32,7 @@ export interface AdapterCallOptions {
   /** Caller cancellation. Combined with the adapter's own timeout controller. */
   signal?: AbortSignal;
   tools?: ToolDefinition[];
+  providerTools?: ProviderToolDefinition[];
   toolChoice?: ToolChoice;
 }
 
@@ -57,6 +58,9 @@ export type AdapterStreamEvent =
 
 /** Interface that all provider adapters must implement. */
 export interface ProviderAdapter {
+  /** Whether this adapter can execute the requested provider-owned tool for
+   * the selected model/configuration. Omission means no provider tools. */
+  supportsProviderTool?(tool: ProviderToolDefinition, config: PriestConfig): boolean;
   /** Execute a request and return the full response. */
   complete(
     messages: Message[],

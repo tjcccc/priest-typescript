@@ -8,7 +8,7 @@ Node.js 22 or 24 LTS · Native TypeScript 7 · One dependency (`better-sqlite3` 
 
 ## Overview
 
-`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.8.1 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
+`@priest-ai/core` is a TypeScript package that implements the priest protocol spec v2.9.0 natively — no Python server, no FFI. It is designed for Node.js backends, serverless functions, CLI tools, and any TypeScript host that needs to talk to a local or remote AI provider.
 
 The core API is three methods on `PriestEngine` plus a tool loop helper:
 
@@ -374,6 +374,23 @@ console.log(response.text);
 
 Manual loop: when `response.execution.finishedReason === 'tool_calls'`, execute `response.toolCalls`, append an `{kind:'assistant', toolCalls, reasoning: response.reasoning}` turn plus `{kind:'tool_result', ...}` turns to `request.toolExchange`, and call `run()` again. `runWithTools()` copies the reasoning continuation automatically. Tool exchange turns are never persisted in sessions — only the original prompt and the final assistant text are stored.
 
+Provider-executed tools are separate. The provider runs them internally and
+returns the final grounded answer, so they never appear in `response.toolCalls`
+or `toolExchange`. OpenAI Responses currently supports hosted web search:
+
+```ts
+await engine.run({
+  config: { provider: 'responses', model: 'gpt-5.6' },
+  prompt: 'What changed today?',
+  providerTools: [{ type: 'web_search' }],
+  tools: [{ name: 'read_file', parameters: { type: 'object' } }],
+});
+```
+
+Provider tools are placed before caller-executed function tools on the
+Responses wire. An adapter must explicitly report support; otherwise the run
+returns a `PROVIDER_ERROR` instead of silently ignoring the capability.
+
 ---
 
 ## Reasoning
@@ -466,10 +483,10 @@ Exactly one of `path`/`url`/`data` per image. Ollama requires base64 sources (`p
 
 ## Spec
 
-`@priest-ai/core` targets priest protocol spec **v2.8.1**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
+`@priest-ai/core` targets priest protocol spec **v2.9.0**. The spec lives in the [`priest`](https://github.com/tjcccc/priest) repository under `spec/`.
 
 ```ts
-PriestEngine.specVersion  // '2.8.1'
+PriestEngine.specVersion  // '2.9.0'
 ```
 
 ---

@@ -14,8 +14,8 @@ class StaticProfileLoader implements ProfileLoader {
 const config = { provider: 'mock', model: 'test-model' };
 
 describe('PriestEngine', () => {
-  it('specVersion is 2.8.1', () => {
-    expect(PriestEngine.specVersion).toBe('2.8.1');
+  it('specVersion is 2.9.0', () => {
+    expect(PriestEngine.specVersion).toBe('2.9.0');
   });
 
   it('returns ok response for registered provider', async () => {
@@ -78,5 +78,19 @@ describe('PriestEngine', () => {
     const response = await engine.run({ config, prompt: 'Hi' });
     expect(response.ok).toBe(false);
     expect(response.error?.code).toBe('PROVIDER_ERROR');
+  });
+
+  it('rejects a provider-executed tool when the adapter does not support it', async () => {
+    const engine = new PriestEngine(new StaticProfileLoader(), undefined, { mock: new MockAdapter() });
+    const response = await engine.run({
+      config,
+      prompt: 'Search the web.',
+      providerTools: [{ type: 'web_search' }],
+    });
+    expect(response.ok).toBe(false);
+    expect(response.error).toMatchObject({
+      code: 'PROVIDER_ERROR',
+      message: expect.stringContaining("Provider tool 'web_search' is not supported"),
+    });
   });
 });

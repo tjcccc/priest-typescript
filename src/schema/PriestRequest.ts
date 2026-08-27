@@ -3,7 +3,7 @@ import { JSONValue } from './JSONValue';
 import { OutputSpec } from './OutputSpec';
 import { PriestConfig } from './PriestConfig';
 import { SessionRef } from './SessionRef';
-import { ToolChoice, ToolDefinition, ToolExchangeTurn } from './ToolTypes';
+import { ProviderToolDefinition, ToolChoice, ToolDefinition, ToolExchangeTurn } from './ToolTypes';
 
 /** A single engine run request. */
 export interface PriestRequest {
@@ -30,6 +30,8 @@ export interface PriestRequest {
   metadata?: Record<string, JSONValue>;
   /** Tools the model may call. The caller executes them; the SDK only transports. */
   tools?: ToolDefinition[];
+  /** Tools the model provider executes itself. They do not enter the caller's tool loop. */
+  providerTools?: ProviderToolDefinition[];
   /** Tool selection behavior. Only meaningful when tools is non-empty. */
   toolChoice?: ToolChoice;
   /**

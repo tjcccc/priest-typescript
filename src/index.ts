@@ -10,7 +10,13 @@ export type {
 export type { OutputSpec, ProviderFormat, PromptFormat } from './schema/OutputSpec';
 export type { SessionRef } from './schema/SessionRef';
 export type { PriestRequest } from './schema/PriestRequest';
-export type { ToolDefinition, ToolChoice, ToolCall, ToolExchangeTurn } from './schema/ToolTypes';
+export type {
+  ProviderToolDefinition,
+  ToolDefinition,
+  ToolChoice,
+  ToolCall,
+  ToolExchangeTurn,
+} from './schema/ToolTypes';
 export type { ImageInput } from './schema/ImageInput';
 export { validateImageInput, DEFAULT_IMAGE_MEDIA_TYPE } from './schema/ImageInput';
 export type {

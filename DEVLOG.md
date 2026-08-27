@@ -1,5 +1,20 @@
 # DEVLOG
 
+## 2026-08-26 — npm v3.1.0 — Provider-executed web search
+
+- Added `PriestRequest.providerTools`, initially with the provider-neutral
+  `{type: "web_search"}` capability, separately from caller-executed function
+  tools and their approval/tool-exchange loop.
+- Added adapter capability checks so unsupported provider tools fail clearly
+  instead of being silently ignored.
+- Added OpenAI Responses mapping to `{type: "web_search"}` and preserved
+  coexisting function tools, with provider-executed tools ordered first.
+- Advanced the canonical protocol target to v2.9.0. Python, .NET, Rust, and
+  Swift synchronization remains pending.
+- Verified with `pnpm typecheck`, `pnpm build`, all 136 tests, and
+  `pnpm pack --dry-run`; downstream Marifold typecheck/build/test, command, and
+  Chromium gates also pass against its 3.0.1 compatibility bridge.
+
 ## 2026-08-22 — npm v3.0.1 — OpenAI Responses assistant-history replay
 
 - Fixed the Responses request serializer to encode prior assistant text as
